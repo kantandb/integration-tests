@@ -1,0 +1,5 @@
+[tools]
+hurl = "8.0.1"
+
+[tasks.e2e]
+run = "./e2e/run.sh"
