@@ -13,9 +13,7 @@ if (!Number.isInteger(vus) || vus < 2) {
 const successfulWrites = new Counter("successful_writes");
 const staleWrites = new Counter("stale_writes");
 
-http.setResponseCallback(
-    http.expectedStatuses({ min: 200, max: 204 }, 412),
-);
+http.setResponseCallback(http.expectedStatuses({ min: 200, max: 204 }, 412));
 
 export const options = {
     scenarios: {
@@ -48,8 +46,12 @@ export function setup() {
         { headers: jsonHeaders, tags: { name: "database_create" } },
     );
 
-    if (!check(createDatabase, { "database created": (r) => r.status === 201 })) {
-        fail(`database creation failed: ${createDatabase.status} ${createDatabase.body}`);
+    if (
+        !check(createDatabase, { "database created": (r) => r.status === 201 })
+    ) {
+        fail(
+            `database creation failed: ${createDatabase.status} ${createDatabase.body}`,
+        );
     }
 
     const createDocument = http.post(
@@ -60,11 +62,15 @@ export function setup() {
     const id = createDocument.status === 201 ? createDocument.json("id") : "";
     const etag = createDocument.headers.Etag;
 
-    if (!check(createDocument, {
-        "document created": (r) => r.status === 201,
-        "create returned an ETag": () => etagPattern.test(etag),
-    })) {
-        fail(`document creation failed: ${createDocument.status} ${createDocument.body}`);
+    if (
+        !check(createDocument, {
+            "document created": (r) => r.status === 201,
+            "create returned an ETag": () => etagPattern.test(etag),
+        })
+    ) {
+        fail(
+            `document creation failed: ${createDocument.status} ${createDocument.body}`,
+        );
     }
 
     return { database, id, etag };
