@@ -1,11 +1,21 @@
 [tools]
 hurl = "8.0.1"
+k6 = "2.2.0"
 
 [tasks.hurlfmt-check]
 run = "hurlfmt --check e2e/*.hurl"
 
 [tasks.e2e]
 run = "./e2e/run.sh"
+
+[tasks.k6-load]
+run = "./k6/run.sh k6/load.js"
+
+[tasks.k6-etag]
+run = "./k6/run.sh k6/etag.js"
+
+[tasks.k6]
+depends = ["k6-load", "k6-etag"]
 
 [tasks.check]
 depends = ["hurlfmt-check", "e2e"]
