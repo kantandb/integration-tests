@@ -5,26 +5,35 @@ HTTP 200
 jsonpath "$.databases" count == 0
 
 
-# Create and list a database.
+# Create a uniquely named database.
 POST {{base_url}}/
-Content-Type: application/json
+Content-Type: application/json; charset=utf-8
 {
-  "name": "e2e"
+  "name": "{{database}}"
 }
 HTTP 201
 [Asserts]
-header "Location" == "/e2e"
-jsonpath "$.name" == "e2e"
+header "Location" == "/{{database}}"
+jsonpath "$.name" == "{{database}}"
 
-GET {{base_url}}/
+
+# Find the database through the paginated list.
+GET {{base_url}}/?limit=1
 HTTP 200
+[Captures]
+database_cursor: jsonpath "$.databases[0]"
 [Asserts]
 jsonpath "$.databases" count == 1
-jsonpath "$.databases[0]" == "e2e"
+jsonpath "$.databases[0]" == "{{database}}"
+
+GET {{base_url}}/?limit=1&cursor={{database_cursor}}
+HTTP 200
+[Asserts]
+jsonpath "$.databases" count == 0
 
 
-# Create and read a document.
-POST {{base_url}}/e2e/
+# Create two documents.
+POST {{base_url}}/{{database}}/
 Content-Type: application/json
 {
   "name": "first",
@@ -35,57 +44,115 @@ Content-Type: application/json
 }
 HTTP 201
 [Captures]
-doc_id: jsonpath "$.id"
-etag_created: header "ETag"
+first_id: jsonpath "$.id"
+first_etag: header "ETag"
 [Asserts]
-header "Location" == "/e2e/{{doc_id}}"
+header "Location" == "/{{database}}/{{first_id}}"
+header "ETag" matches /^"[0-9a-f]{32}"$/
 jsonpath "$.id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
-GET {{base_url}}/e2e/{{doc_id}}
+POST {{base_url}}/{{database}}/
+Content-Type: application/json; charset=utf-8
+{
+  "name": "second"
+}
+HTTP 201
+[Captures]
+second_id: jsonpath "$.id"
+[Asserts]
+header "Location" == "/{{database}}/{{second_id}}"
+header "ETag" matches /^"[0-9a-f]{32}"$/
+jsonpath "$.id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+
+# Page through document IDs.
+GET {{base_url}}/{{database}}?limit=1
+HTTP 200
+[Captures]
+document_cursor: jsonpath "$.documents[0]"
+[Asserts]
+jsonpath "$.documents" count == 1
+jsonpath "$.documents[0]" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+GET {{base_url}}/{{database}}?limit=1&cursor={{document_cursor}}
+HTTP 200
+[Captures]
+last_document: jsonpath "$.documents[0]"
+[Asserts]
+jsonpath "$.documents" count == 1
+jsonpath "$.documents[0]" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+jsonpath "$.documents[0]" != "{{document_cursor}}"
+
+GET {{base_url}}/{{database}}?limit=1&cursor={{last_document}}
 HTTP 200
 [Asserts]
-header "ETag" == "{{etag_created}}"
+jsonpath "$.documents" count == 0
+
+
+# Read and replace the first document.
+GET {{base_url}}/{{database}}/{{first_id}}
+HTTP 200
+[Asserts]
+header "ETag" == "{{first_etag}}"
 jsonpath "$.name" == "first"
 jsonpath "$.active" == true
 jsonpath "$.nested.a" == 1
 
-
-# Replace with optimistic concurrency.
-PUT {{base_url}}/e2e/{{doc_id}}
+PUT {{base_url}}/{{database}}/{{first_id}}
 Content-Type: application/json
-If-Match: {{etag_created}}
+If-Match: {{first_etag}}
 {
-  "name": "second",
+  "name": "replacement",
   "count": 1
 }
 HTTP 200
 [Captures]
-etag_replaced: header "ETag"
+replaced_etag: header "ETag"
 [Asserts]
-header "ETag" != "{{etag_created}}"
-jsonpath "$.name" == "second"
+header "ETag" != "{{first_etag}}"
+jsonpath "$.name" == "replacement"
 jsonpath "$.count" == 1
 
 
-# Merge fields, then apply a JSON Patch.
-PATCH {{base_url}}/e2e/{{doc_id}}
-Content-Type: application/merge-patch+json
-If-Match: {{etag_replaced}}
+# Reject a stale write without changing the document.
+PUT {{base_url}}/{{database}}/{{first_id}}
+Content-Type: application/json
+If-Match: {{first_etag}}
+{
+  "name": "stale"
+}
+HTTP 412
+[Asserts]
+jsonpath "$.error.code" == "precondition_failed"
+jsonpath "$.error.message" == "If-Match precondition failed"
+
+GET {{base_url}}/{{database}}/{{first_id}}
+HTTP 200
+[Asserts]
+header "ETag" == "{{replaced_etag}}"
+jsonpath "$.name" == "replacement"
+
+
+# Apply both patch formats.
+PATCH {{base_url}}/{{database}}/{{first_id}}
+Content-Type: application/merge-patch+json; charset=utf-8
+If-Match: {{replaced_etag}}
 {
   "name": "merged",
   "enabled": true
 }
 HTTP 200
 [Captures]
-etag_merged: header "ETag"
+merged_etag: header "ETag"
 [Asserts]
+header "ETag" != "{{replaced_etag}}"
 jsonpath "$.name" == "merged"
 jsonpath "$.count" == 1
 jsonpath "$.enabled" == true
 
-PATCH {{base_url}}/e2e/{{doc_id}}
+PATCH {{base_url}}/{{database}}/{{first_id}}
 Content-Type: application/json-patch+json
-If-Match: {{etag_merged}}
+If-Match: {{merged_etag}}
 [
   {
     "op": "replace",
@@ -100,43 +167,37 @@ If-Match: {{etag_merged}}
 ]
 HTTP 200
 [Captures]
-etag_patched: header "ETag"
+patched_etag: header "ETag"
 [Asserts]
+header "ETag" != "{{merged_etag}}"
 jsonpath "$.name" == "patched"
 jsonpath "$.items" count == 2
 jsonpath "$.items[1]" == 2
 
 
-# Reject a stale write without changing the document.
-PUT {{base_url}}/e2e/{{doc_id}}
-Content-Type: application/json
-If-Match: {{etag_created}}
-{
-  "name": "stale"
-}
-HTTP 412
-[Asserts]
-jsonpath "$.error.code" == "precondition_failed"
+# Delete both documents and confirm the list is empty.
+DELETE {{base_url}}/{{database}}/{{first_id}}
+If-Match: {{patched_etag}}
+HTTP 204
 
-GET {{base_url}}/e2e/{{doc_id}}
+DELETE {{base_url}}/{{database}}/{{second_id}}
+If-Match: *
+HTTP 204
+
+GET {{base_url}}/{{database}}
 HTTP 200
 [Asserts]
-header "ETag" == "{{etag_patched}}"
-jsonpath "$.name" == "patched"
+jsonpath "$.documents" count == 0
 
 
-# Delete the document and database.
-DELETE {{base_url}}/e2e/{{doc_id}}
-If-Match: {{etag_patched}}
+# Delete the database and confirm it is gone.
+DELETE {{base_url}}/{{database}}
 HTTP 204
 
-GET {{base_url}}/e2e/{{doc_id}}
+GET {{base_url}}/{{database}}
 HTTP 404
 [Asserts]
-jsonpath "$.error.code" == "document_not_found"
-
-DELETE {{base_url}}/e2e
-HTTP 204
+jsonpath "$.error.code" == "database_not_found"
 
 GET {{base_url}}/
 HTTP 200
