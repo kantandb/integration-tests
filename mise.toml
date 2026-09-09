@@ -1,3 +1,6 @@
+[env]
+K6_NO_USAGE_REPORT = "true"
+
 [tools]
 hurl = "8.0.1"
 k6 = "2.2.0"
