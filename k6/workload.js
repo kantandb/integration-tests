@@ -128,6 +128,7 @@ export function browseDocs({ database }) {
     if (!check(list, {
         "documents browsed": (r) => r.status === 200,
         "browse returned IDs": () => Array.isArray(ids) && ids.length > 0,
+        "browse returned cursor": (r) => typeof r.json("cursor") === "string",
     })) {
         return;
     }

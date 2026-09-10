@@ -101,6 +101,7 @@ export default function ({ database }) {
     check(list, {
         "documents listed": (r) => r.status === 200,
         "list contains document": (r) => r.json("documents").includes(id),
+        "list returned cursor": (r) => typeof r.json("cursor") === "string",
     });
 
     const remove = http.del(`${baseUrl}/${database}/${id}`, null, {

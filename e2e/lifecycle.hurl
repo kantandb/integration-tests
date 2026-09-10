@@ -9,12 +9,27 @@ jsonpath "$.databases" count == 0
 POST {{base_url}}/
 Content-Type: application/json; charset=utf-8
 {
-  "name": "{{database}}"
+  "name": "{{database}}",
+  "indexes": [
+    {
+      "name": "email",
+      "path": "/email"
+    },
+    {
+      "name": "active",
+      "path": "/active"
+    }
+  ]
 }
 HTTP 201
 [Asserts]
 header "Location" == "/{{database}}"
 jsonpath "$.name" == "{{database}}"
+jsonpath "$.indexes" count == 2
+jsonpath "$.indexes[0].name" == "email"
+jsonpath "$.indexes[0].path" == "/email"
+jsonpath "$.indexes[1].name" == "active"
+jsonpath "$.indexes[1].path" == "/active"
 
 
 # Find the database through the paginated list.
@@ -37,6 +52,7 @@ POST {{base_url}}/{{database}}/
 Content-Type: application/json
 {
   "name": "first",
+  "email": "alice@example.com",
   "active": true,
   "nested": {
     "a": 1
@@ -54,7 +70,9 @@ jsonpath "$.id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}
 POST {{base_url}}/{{database}}/
 Content-Type: application/json; charset=utf-8
 {
-  "name": "second"
+  "name": "second",
+  "email": "bob@example.com",
+  "active": true
 }
 HTTP 201
 [Captures]
@@ -69,24 +87,45 @@ jsonpath "$.id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}
 GET {{base_url}}/{{database}}?limit=1
 HTTP 200
 [Captures]
-document_cursor: jsonpath "$.documents[0]"
+document_cursor: jsonpath "$.cursor"
+first_listed: jsonpath "$.documents[0]"
 [Asserts]
 jsonpath "$.documents" count == 1
 jsonpath "$.documents[0]" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+jsonpath "$.cursor" != ""
 
 GET {{base_url}}/{{database}}?limit=1&cursor={{document_cursor}}
 HTTP 200
-[Captures]
-last_document: jsonpath "$.documents[0]"
 [Asserts]
 jsonpath "$.documents" count == 1
 jsonpath "$.documents[0]" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-jsonpath "$.documents[0]" != "{{document_cursor}}"
+jsonpath "$.documents[0]" != "{{first_listed}}"
+jsonpath "$.cursor" == ""
 
-GET {{base_url}}/{{database}}?limit=1&cursor={{last_document}}
+
+# Query indexed values with an opaque cursor.
+GET {{base_url}}/{{database}}?index=active&value=true&limit=1
+HTTP 200
+[Captures]
+active_cursor: jsonpath "$.cursor"
+active_first: jsonpath "$.documents[0]"
+[Asserts]
+jsonpath "$.documents" count == 1
+jsonpath "$.cursor" != ""
+
+GET {{base_url}}/{{database}}?index=active&value=true&limit=1&cursor={{active_cursor}}
 HTTP 200
 [Asserts]
-jsonpath "$.documents" count == 0
+jsonpath "$.documents" count == 1
+jsonpath "$.documents[0]" != "{{active_first}}"
+jsonpath "$.cursor" == ""
+
+GET {{base_url}}/{{database}}?index=email&value=%22alice%40example.com%22
+HTTP 200
+[Asserts]
+jsonpath "$.documents" count == 1
+jsonpath "$.documents[0]" == "{{first_id}}"
+jsonpath "$.cursor" == ""
 
 
 # Read and replace the first document.
@@ -112,6 +151,19 @@ replaced_etag: header "ETag"
 header "ETag" != "{{first_etag}}"
 jsonpath "$.name" == "replacement"
 jsonpath "$.count" == 1
+
+GET {{base_url}}/{{database}}?index=email&value=%22alice%40example.com%22
+HTTP 200
+[Asserts]
+jsonpath "$.documents" count == 0
+jsonpath "$.cursor" == ""
+
+GET {{base_url}}/{{database}}?index=active&value=true
+HTTP 200
+[Asserts]
+jsonpath "$.documents" count == 1
+jsonpath "$.documents[0]" == "{{second_id}}"
+jsonpath "$.cursor" == ""
 
 
 # Reject a stale write without changing the document.
@@ -139,6 +191,7 @@ Content-Type: application/merge-patch+json; charset=utf-8
 If-Match: {{replaced_etag}}
 {
   "name": "merged",
+  "active": false,
   "enabled": true
 }
 HTTP 200
@@ -148,7 +201,15 @@ merged_etag: header "ETag"
 header "ETag" != "{{replaced_etag}}"
 jsonpath "$.name" == "merged"
 jsonpath "$.count" == 1
+jsonpath "$.active" == false
 jsonpath "$.enabled" == true
+
+GET {{base_url}}/{{database}}?index=active&value=false
+HTTP 200
+[Asserts]
+jsonpath "$.documents" count == 1
+jsonpath "$.documents[0]" == "{{first_id}}"
+jsonpath "$.cursor" == ""
 
 PATCH {{base_url}}/{{database}}/{{first_id}}
 Content-Type: application/json-patch+json
@@ -188,6 +249,7 @@ GET {{base_url}}/{{database}}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 0
+jsonpath "$.cursor" == ""
 
 
 # Delete the database and confirm it is gone.

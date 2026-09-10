@@ -18,6 +18,50 @@ HTTP 415
 [Asserts]
 jsonpath "$.error.code" == "unsupported_media_type"
 
+POST {{base_url}}/
+Content-Type: application/json
+{
+  "name": "{{database}}",
+  "indexes": null
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_request"
+
+
+# Query validation distinguishes malformed and missing indexes.
+POST {{base_url}}/
+Content-Type: application/json
+{
+  "name": "{{database}}",
+  "indexes": [
+    {
+      "name": "active",
+      "path": "/active"
+    }
+  ]
+}
+HTTP 201
+
+GET {{base_url}}/{{database}}?index=active
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+GET {{base_url}}/{{database}}?index=missing&value=true
+HTTP 404
+[Asserts]
+jsonpath "$.error.code" == "index_not_found"
+
+GET {{base_url}}/{{database}}?index=active&value=true&cursor=bad
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_cursor"
+
+DELETE {{base_url}}/{{database}}
+HTTP 204
+
+
 POST {{base_url}}/missing/
 Content-Type: application/json
 {}
