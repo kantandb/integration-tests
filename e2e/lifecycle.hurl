@@ -18,6 +18,10 @@ Content-Type: application/json; charset=utf-8
     {
       "name": "active",
       "path": "/active"
+    },
+    {
+      "name": "score",
+      "path": "/score"
     }
   ]
 }
@@ -25,11 +29,13 @@ HTTP 201
 [Asserts]
 header "Location" == "/{{database}}"
 jsonpath "$.name" == "{{database}}"
-jsonpath "$.indexes" count == 2
+jsonpath "$.indexes" count == 3
 jsonpath "$.indexes[0].name" == "email"
 jsonpath "$.indexes[0].path" == "/email"
 jsonpath "$.indexes[1].name" == "active"
 jsonpath "$.indexes[1].path" == "/active"
+jsonpath "$.indexes[2].name" == "score"
+jsonpath "$.indexes[2].path" == "/score"
 
 
 # Find the database through the paginated list.
@@ -54,6 +60,7 @@ Content-Type: application/json
   "name": "first",
   "email": "alice@example.com",
   "active": true,
+  "score": 10,
   "nested": {
     "a": 1
   }
@@ -72,7 +79,8 @@ Content-Type: application/json; charset=utf-8
 {
   "name": "second",
   "email": "bob@example.com",
-  "active": true
+  "active": true,
+  "score": 20
 }
 HTTP 201
 [Captures]
@@ -125,6 +133,50 @@ HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
 jsonpath "$.documents[0]" == "{{first_id}}"
+jsonpath "$.cursor" == ""
+
+
+# Query indexed comparisons and page with an equivalent numeric value.
+GET {{base_url}}/{{database}}?index=score&op=ge&value=10&limit=1
+HTTP 200
+[Captures]
+score_cursor: jsonpath "$.cursor"
+[Asserts]
+jsonpath "$.documents" count == 1
+jsonpath "$.documents[0]" == "{{first_id}}"
+jsonpath "$.cursor" != ""
+
+GET {{base_url}}/{{database}}?index=score&op=gt&value=10&limit=1&cursor={{score_cursor}}
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_cursor"
+
+GET {{base_url}}/{{database}}?index=score&op=ge&value=1e1&limit=1&cursor={{score_cursor}}
+HTTP 200
+[Asserts]
+jsonpath "$.documents" count == 1
+jsonpath "$.documents[0]" == "{{second_id}}"
+jsonpath "$.cursor" == ""
+
+GET {{base_url}}/{{database}}?index=score&op=lt&value=20
+HTTP 200
+[Asserts]
+jsonpath "$.documents" count == 1
+jsonpath "$.documents[0]" == "{{first_id}}"
+jsonpath "$.cursor" == ""
+
+GET {{base_url}}/{{database}}?index=score&op=le&value=10
+HTTP 200
+[Asserts]
+jsonpath "$.documents" count == 1
+jsonpath "$.documents[0]" == "{{first_id}}"
+jsonpath "$.cursor" == ""
+
+GET {{base_url}}/{{database}}?index=score&op=gt&value=10
+HTTP 200
+[Asserts]
+jsonpath "$.documents" count == 1
+jsonpath "$.documents[0]" == "{{second_id}}"
 jsonpath "$.cursor" == ""
 
 

@@ -48,6 +48,36 @@ HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 
+GET {{base_url}}/{{database}}?op=eq
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+GET {{base_url}}/{{database}}?index=active&op=bad&value=true
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+GET {{base_url}}/{{database}}?index=active&op=lt&value=true
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+GET {{base_url}}/{{database}}?index=active&value=%7B%7D
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+GET {{base_url}}/{{database}}?index=active&index=active&value=true
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+GET {{base_url}}/{{database}}?unknown=true
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
 GET {{base_url}}/{{database}}?index=missing&value=true
 HTTP 404
 [Asserts]
