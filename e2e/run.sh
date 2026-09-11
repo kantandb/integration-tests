@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+(cd prototype && mise run build)
+
 port=$((20000 + ($$ % 20000)))
 addr="${KANTAN_E2E_ADDR:-127.0.0.1:$port}"
 base_url="http://$addr"
@@ -8,7 +10,7 @@ database="e2e-$$"
 data_dir=$(mktemp -d "${TMPDIR:-/tmp}/kantan-e2e.XXXXXX")
 log_file="$data_dir/server.log"
 
-./kantan -addr "$addr" -data "$data_dir/db" >"$log_file" 2>&1 &
+./prototype/kantan -addr "$addr" -data "$data_dir/db" >"$log_file" 2>&1 &
 server_pid=$!
 
 cleanup() {
