@@ -88,8 +88,132 @@ HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_cursor"
 
+
+# QUERY rejects invalid request contracts.
+QUERY {{base_url}}/{{database}}?limit=1
+Content-Type: application/json
+{
+  "path": "$.active",
+  "value": true
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+jsonpath "$.error.message" == "URI query parameters are not supported"
+
+QUERY {{base_url}}/{{database}}
+HTTP 415
+[Asserts]
+jsonpath "$.error.code" == "unsupported_media_type"
+jsonpath "$.error.message" == "Content-Type must be application/json"
+
+QUERY {{base_url}}/{{database}}
+Content-Type: text/plain
+{
+  "path": "$.active",
+  "value": true
+}
+HTTP 415
+[Asserts]
+jsonpath "$.error.code" == "unsupported_media_type"
+
+QUERY {{base_url}}/{{database}}
+Content-Type: application/json
+{
+  "path": "$.active"
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+QUERY {{base_url}}/{{database}}
+Content-Type: application/json
+```
+{"path":"$.active","value":true
+```
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+QUERY {{base_url}}/{{database}}
+Content-Type: application/json
+{
+  "path": "$.active",
+  "value": true,
+  "extra": true
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+QUERY {{base_url}}/{{database}}
+Content-Type: application/json
+{
+  "path": "$.active",
+  "value": {}
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+QUERY {{base_url}}/{{database}}
+Content-Type: application/json
+{
+  "path": "$.active",
+  "op": "gt",
+  "value": true
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+QUERY {{base_url}}/{{database}}
+Content-Type: application/json
+{
+  "path": "active",
+  "value": true
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+jsonpath "$.error.message" == "Path is invalid"
+
+QUERY {{base_url}}/{{database}}
+Content-Type: application/json
+{
+  "path": "$.active",
+  "value": true,
+  "limit": 0
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+QUERY {{base_url}}/{{database}}
+Content-Type: application/json
+{
+  "path": "$.active",
+  "value": true,
+  "cursor": "bad"
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_cursor"
+jsonpath "$.error.message" == "Cursor is invalid"
+
 DELETE {{base_url}}/{{database}}
 HTTP 204
+
+QUERY {{base_url}}/{{database}}
+Content-Type: application/json
+{
+  "path": "$.active",
+  "value": true
+}
+HTTP 404
+[Asserts]
+jsonpath "$.error.code" == "database_not_found"
+jsonpath "$.error.message" == "Database does not exist"
 
 
 POST {{base_url}}/missing/

@@ -98,6 +98,7 @@ HTTP 200
 document_cursor: jsonpath "$.cursor"
 first_listed: jsonpath "$.documents[0]"
 [Asserts]
+header "Accept-Query" == "application/json"
 jsonpath "$.documents" count == 1
 jsonpath "$.documents[0]" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 jsonpath "$.cursor" != ""
