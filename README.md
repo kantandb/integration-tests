@@ -17,6 +17,7 @@ Each task starts its own server with temporary storage.
 mise run k6-load     # CRUD load
 mise run k6-etag     # concurrent conditional writes
 mise run k6-workload # mixed concurrent workload
+mise run k6-range    # secondary index range queries
 mise run k6          # all tests
 ```
 
@@ -39,6 +40,11 @@ ETAG_VUS=20 ETAG_MAX_DURATION=15s mise run k6-etag
 
 Exactly one conditional write must succeed. Every other write must return
 `412 precondition_failed`.
+
+The range test seeds indexed values in reverse creation order, including ties.
+It verifies `lt`, `le`, `gt`, and `ge` pagination in indexed-value and document-ID
+order. Configure it with `RANGE_VUS`, `RANGE_ITERATIONS`, `RANGE_SEED_DOCS`,
+`RANGE_PAGE_SIZE`, and `RANGE_MAX_DURATION`.
 
 The workload test models concurrent reads, browsing, edits to shared hot
 records, and document creation. It seeds 100 records, then runs a 30-second

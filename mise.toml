@@ -20,8 +20,11 @@ run = "./k6/run.sh k6/etag.js"
 [tasks.k6-workload]
 run = "./k6/run.sh k6/workload.js"
 
+[tasks.k6-range]
+run = "./k6/run.sh k6/range.js"
+
 [tasks.k6]
-depends = ["k6-load", "k6-etag", "k6-workload"]
+depends = ["k6-load", "k6-etag", "k6-workload", "k6-range"]
 
 [tasks.check]
 depends = ["hurlfmt-check", "hurl"]
