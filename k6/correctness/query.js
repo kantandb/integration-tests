@@ -1,6 +1,7 @@
 import http from "k6/http";
 import { check, fail } from "k6";
 import { Counter } from "k6/metrics";
+import exec from "k6/execution";
 
 const baseUrl = __ENV.BASE_URL;
 const vus = Number(__ENV.QUERY_VUS || 5);
@@ -16,6 +17,9 @@ for (const [name, value] of Object.entries({ vus, iterations, seedDocs, pageSize
 }
 if (seedDocs > 1000 || pageSize > 1000) {
     throw new Error("query seed documents and page size must be at most 1000");
+}
+if (vus * iterations < operators.length) {
+    throw new Error("QUERY_VUS * QUERY_ITERATIONS must cover every operator");
 }
 
 const completed = Object.fromEntries(
@@ -239,9 +243,11 @@ function queryAll(database, path, operator, value, operation) {
 }
 
 function queryCase(maxScore) {
+    const iteration = exec.scenario.iterationInTest;
+
     return {
-        operator: operators[(__VU + __ITER - 1) % operators.length],
-        boundary: 1 + ((__VU * 7 + __ITER) % maxScore),
+        operator: operators[iteration % operators.length],
+        boundary: 1 + ((iteration * 7) % maxScore),
     };
 }
 

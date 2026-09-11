@@ -12,22 +12,22 @@ run = "hurlfmt --check hurl/*.hurl"
 run = "./hurl/run.sh"
 
 [tasks.k6-load]
-run = "./k6/run.sh k6/load.js"
+run = "./k6/run.sh k6/reliability/load.js"
 
 [tasks.k6-etag]
-run = "./k6/run.sh k6/etag.js"
+run = "./k6/run.sh k6/correctness/etag.js"
 
 [tasks.k6-benchmark]
-run = "./k6/run.sh k6/benchmark.js"
+run = "./k6/run.sh k6/performance/benchmark.js"
 
 [tasks.k6-range]
-run = "./k6/run.sh k6/range.js"
+run = "./k6/run.sh k6/correctness/range.js"
 
 [tasks.k6-query]
-run = "./k6/run.sh k6/query.js"
+run = "./k6/run.sh k6/correctness/query.js"
 
 [tasks.k6]
-depends = ["k6-load", "k6-etag", "k6-benchmark", "k6-range", "k6-query"]
+depends = ["k6-etag", "k6-range", "k6-query"]
 
 [tasks.check]
 depends = ["hurlfmt-check", "hurl"]

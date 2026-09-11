@@ -9,7 +9,7 @@ mise run hurl
 The suite covers health, errors, indexed CRUD, pagination, and conditional
 writes.
 
-## Performance tests
+## k6 tests
 
 Each task starts its own server with temporary storage.
 
@@ -19,7 +19,7 @@ mise run k6-etag      # concurrent conditional writes
 mise run k6-benchmark # storage benchmark
 mise run k6-range     # secondary index range queries
 mise run k6-query     # concurrent JSONPath queries and writes
-mise run k6           # all tests
+mise run k6           # all correctness tests
 ```
 
 The load test uses 5 VUs for 15 seconds by default. Set `LOAD_VUS` and
