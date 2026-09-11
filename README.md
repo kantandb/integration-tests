@@ -18,6 +18,7 @@ mise run k6-load      # CRUD load
 mise run k6-etag      # concurrent conditional writes
 mise run k6-benchmark # storage benchmark
 mise run k6-range     # secondary index range queries
+mise run k6-query     # concurrent JSONPath queries and writes
 mise run k6           # all tests
 ```
 
@@ -46,15 +47,22 @@ It verifies `lt`, `le`, `gt`, and `ge` pagination in indexed-value and document-
 order. Configure it with `RANGE_VUS`, `RANGE_ITERATIONS`, `RANGE_SEED_DOCS`,
 `RANGE_PAGE_SIZE`, and `RANGE_MAX_DURATION`.
 
+The QUERY test verifies indexed and scan-backed JSONPath pagination for every
+operator while concurrent writes maintain the same database's index. Configure
+it with `QUERY_VUS`, `QUERY_ITERATIONS`, `QUERY_SEED_DOCS`, `QUERY_PAGE_SIZE`,
+and `QUERY_MAX_DURATION`.
+
 The benchmark seeds 10,000 indexed 1 KiB documents, then runs point reads,
-primary scans, range queries, indexed updates, and indexed creates for two
-minutes. It reports average, median, p90, p95, p99, maximum, and request count
-for each operation. Configure it with:
+primary scans, GET range queries, indexed and scan-backed QUERY requests,
+indexed updates, and indexed creates for two minutes. It reports average,
+median, p90, p95, p99, maximum, and request count for each operation. Configure
+it with:
 
 ```sh
 BENCHMARK_DURATION=5m BENCHMARK_SEED_DOCS=50000 \
 BENCHMARK_PAYLOAD_BYTES=4096 BENCHMARK_READ_RATE=200 \
 BENCHMARK_LIST_RATE=10 BENCHMARK_RANGE_RATE=10 \
+BENCHMARK_QUERY_INDEX_RATE=10 BENCHMARK_QUERY_SCAN_RATE=5 \
 BENCHMARK_UPDATE_RATE=40 BENCHMARK_CREATE_RATE=20 \
 mise run k6-benchmark
 ```

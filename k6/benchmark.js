@@ -10,6 +10,8 @@ const payloadBytes = Number(__ENV.BENCHMARK_PAYLOAD_BYTES || 1024);
 const readRate = Number(__ENV.BENCHMARK_READ_RATE || 100);
 const listRate = Number(__ENV.BENCHMARK_LIST_RATE || 5);
 const rangeRate = Number(__ENV.BENCHMARK_RANGE_RATE || 5);
+const queryIndexRate = Number(__ENV.BENCHMARK_QUERY_INDEX_RATE || 5);
+const queryScanRate = Number(__ENV.BENCHMARK_QUERY_SCAN_RATE || 2);
 const updateRate = Number(__ENV.BENCHMARK_UPDATE_RATE || 20);
 const createRate = Number(__ENV.BENCHMARK_CREATE_RATE || 10);
 const categoryCount = 100;
@@ -18,7 +20,15 @@ const idPattern =
 const etagPattern = /^"[0-9a-f]{32}"$/;
 
 const counts = [seedDocs, pageSize, payloadBytes];
-const rates = [readRate, listRate, rangeRate, updateRate, createRate];
+const rates = [
+    readRate,
+    listRate,
+    rangeRate,
+    queryIndexRate,
+    queryScanRate,
+    updateRate,
+    createRate,
+];
 if (counts.some((value) => !Number.isInteger(value) || value < 1)) {
     throw new Error("benchmark counts must be positive integers");
 }
@@ -42,6 +52,8 @@ export const options = {
         read: scenario("readDoc", readRate, "read"),
         list: scenario("listDocs", listRate, "read"),
         range: scenario("rangeDocs", rangeRate, "read"),
+        queryIndex: scenario("queryIndex", queryIndexRate, "read"),
+        queryScan: scenario("queryScan", queryScanRate, "read"),
         update: scenario("updateDoc", updateRate, "write"),
         create: scenario("createDoc", createRate, "write"),
     },
@@ -52,6 +64,8 @@ export const options = {
         "http_req_duration{operation:point_read}": ["p(95)<1000"],
         "http_req_duration{operation:primary_scan}": ["p(95)<1000"],
         "http_req_duration{operation:range_query}": ["p(95)<1000"],
+        "http_req_duration{operation:index_query}": ["p(95)<1000"],
+        "http_req_duration{operation:scan_query}": ["p(95)<1500"],
         "http_req_duration{operation:update_read}": ["p(95)<1000"],
         "http_req_duration{operation:indexed_update}": ["p(95)<1500"],
         "http_req_duration{operation:indexed_create}": ["p(95)<1500"],
@@ -123,6 +137,7 @@ export function setup() {
             `${baseUrl}/${database}/`,
             JSON.stringify({
                 category: index % categoryCount,
+                products: [{ price: index % categoryCount }],
                 revision: 0,
                 payload: payload(index),
             }),
@@ -187,6 +202,50 @@ export function rangeDocs({ database }) {
         "range queried": (r) => r.status === 200,
         "range returned documents": (r) => r.json("documents").length > 0,
         "range returned cursor": (r) => typeof r.json("cursor") === "string",
+    });
+}
+
+export function queryIndex({ database }) {
+    const boundary = Math.floor(Math.random() * categoryCount);
+    const response = pathQuery(
+        database,
+        { path: "$.category", op: "ge", value: boundary, limit: pageSize },
+        "category_path_query",
+        "index_query",
+    );
+
+    checkQuery(response, "indexed QUERY");
+}
+
+export function queryScan({ database }) {
+    const boundary = Math.floor(Math.random() * categoryCount);
+    const response = pathQuery(
+        database,
+        {
+            path: "$.products[*].price",
+            op: "ge",
+            value: boundary,
+            limit: pageSize,
+        },
+        "product_path_query",
+        "scan_query",
+    );
+
+    checkQuery(response, "scan QUERY");
+}
+
+function pathQuery(database, query, name, operation) {
+    return http.request("QUERY", `${baseUrl}/${database}`, JSON.stringify(query), {
+        headers: jsonHeaders,
+        tags: { name, operation },
+    });
+}
+
+function checkQuery(response, name) {
+    check(response, {
+        [`${name} returned`]: (r) => r.status === 200,
+        [`${name} returned documents`]: (r) => r.json("documents").length > 0,
+        [`${name} returned cursor`]: (r) => typeof r.json("cursor") === "string",
     });
 }
 
