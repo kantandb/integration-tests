@@ -40,4 +40,9 @@ trap 'exit 130' INT TERM
 hurl --test --retry 30 --retry-interval 100ms \
     --variable "base_url=$base_url" hurl/health.hurl
 
-k6 run --env "BASE_URL=$base_url" "$script"
+if [ -n "${K6_SUMMARY_EXPORT:-}" ]; then
+    k6 run --summary-export "$K6_SUMMARY_EXPORT" \
+        --env "BASE_URL=$base_url" "$script"
+else
+    k6 run --env "BASE_URL=$base_url" "$script"
+fi

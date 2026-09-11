@@ -14,11 +14,11 @@ writes.
 Each task starts its own server with temporary storage.
 
 ```sh
-mise run k6-load     # CRUD load
-mise run k6-etag     # concurrent conditional writes
-mise run k6-workload # mixed concurrent workload
-mise run k6-range    # secondary index range queries
-mise run k6          # all tests
+mise run k6-load      # CRUD load
+mise run k6-etag      # concurrent conditional writes
+mise run k6-benchmark # storage benchmark
+mise run k6-range     # secondary index range queries
+mise run k6           # all tests
 ```
 
 The load test uses 5 VUs for 15 seconds by default. Set `LOAD_VUS` and
@@ -46,17 +46,20 @@ It verifies `lt`, `le`, `gt`, and `ge` pagination in indexed-value and document-
 order. Configure it with `RANGE_VUS`, `RANGE_ITERATIONS`, `RANGE_SEED_DOCS`,
 `RANGE_PAGE_SIZE`, and `RANGE_MAX_DURATION`.
 
-The workload test models concurrent reads, browsing, edits to shared hot
-records, and document creation. It seeds 100 records, then runs a 30-second
-read-heavy workload at 18 sessions per second. Configure it with:
+The benchmark seeds 10,000 indexed 1 KiB documents, then runs point reads,
+primary scans, range queries, indexed updates, and indexed creates for two
+minutes. It reports average, median, p90, p95, p99, maximum, and request count
+for each operation. Configure it with:
 
 ```sh
-WORKLOAD_DURATION=1m WORKLOAD_READ_RATE=24 \
-WORKLOAD_BROWSE_RATE=4 WORKLOAD_WRITE_RATE=6 \
-WORKLOAD_CREATE_RATE=2 mise run k6-workload
+BENCHMARK_DURATION=5m BENCHMARK_SEED_DOCS=50000 \
+BENCHMARK_PAYLOAD_BYTES=4096 BENCHMARK_READ_RATE=200 \
+BENCHMARK_LIST_RATE=10 BENCHMARK_RANGE_RATE=10 \
+BENCHMARK_UPDATE_RATE=40 BENCHMARK_CREATE_RATE=20 \
+mise run k6-benchmark
 ```
 
-`WORKLOAD_SEED_DOCS` and `WORKLOAD_HOT_DOCS` control the initial collection and
-write contention. The test requires no dropped iterations, over 99% successful
-checks, under 1% unexpected HTTP failures, and p95 latency below 500 ms for
-reads and 750 ms for writes.
+`BENCHMARK_PAGE_SIZE` sets scan page size. `BENCHMARK_SETUP_TIMEOUT` allows
+longer seed runs. Set `K6_SUMMARY_EXPORT=summary.json` for machine-readable
+results. Keep all settings fixed when comparing revisions and run each revision
+several times.
