@@ -1,9 +1,9 @@
 # KantanDB integration testing
 
-Place the `kantan` binary in the repository root, then run:
+Run the Hurl suite:
 
 ```sh
-mise run e2e
+mise run hurl
 ```
 
 The suite covers health, errors, indexed CRUD, pagination, and conditional

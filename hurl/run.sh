@@ -4,10 +4,10 @@ set -eu
 (cd prototype && mise run build)
 
 port=$((20000 + ($$ % 20000)))
-addr="${KANTAN_E2E_ADDR:-127.0.0.1:$port}"
+addr="${KANTAN_HURL_ADDR:-127.0.0.1:$port}"
 base_url="http://$addr"
-database="e2e-$$"
-data_dir=$(mktemp -d "${TMPDIR:-/tmp}/kantan-e2e.XXXXXX")
+database="hurl-$$"
+data_dir=$(mktemp -d "${TMPDIR:-/tmp}/kantan-hurl.XXXXXX")
 log_file="$data_dir/server.log"
 
 ./prototype/kantan -addr "$addr" -data "$data_dir/db" >"$log_file" 2>&1 &
@@ -32,8 +32,8 @@ trap 'exit 130' INT TERM
 
 # Wait until the new process accepts requests.
 hurl --test --retry 30 --retry-interval 100ms \
-    --variable "base_url=$base_url" e2e/health.hurl
+    --variable "base_url=$base_url" hurl/health.hurl
 
 hurl --test --jobs 1 \
     --variable "base_url=$base_url" \
-    --variable "database=$database" e2e/*.hurl
+    --variable "database=$database" hurl/*.hurl

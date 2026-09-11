@@ -6,10 +6,10 @@ hurl = "8.0.1"
 k6 = "2.2.0"
 
 [tasks.hurlfmt-check]
-run = "hurlfmt --check e2e/*.hurl"
+run = "hurlfmt --check hurl/*.hurl"
 
-[tasks.e2e]
-run = "./e2e/run.sh"
+[tasks.hurl]
+run = "./hurl/run.sh"
 
 [tasks.k6-load]
 run = "./k6/run.sh k6/load.js"
@@ -24,4 +24,4 @@ run = "./k6/run.sh k6/workload.js"
 depends = ["k6-load", "k6-etag", "k6-workload"]
 
 [tasks.check]
-depends = ["hurlfmt-check", "e2e"]
+depends = ["hurlfmt-check", "hurl"]

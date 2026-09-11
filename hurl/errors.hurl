@@ -12,7 +12,7 @@ jsonpath "$.error.message" == "Database name is invalid"
 POST {{base_url}}/
 Content-Type: text/plain
 {
-  "name": "e2e"
+  "name": "hurl"
 }
 HTTP 415
 [Asserts]
