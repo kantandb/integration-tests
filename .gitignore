@@ -2,4 +2,5 @@
 *.json
 *.log
 !README.md
+!reports/*.md
 kantan
