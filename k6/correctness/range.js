@@ -51,7 +51,7 @@ export function setup() {
 
     const database = `range-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
     const createDatabase = http.post(
-        `${baseUrl}/`,
+        `${baseUrl}/db`,
         JSON.stringify({
             name: database,
             indexes: [{ name: "score", path: "/score" }],
@@ -68,7 +68,7 @@ export function setup() {
         // Reverse values relative to creation order and duplicate each value.
         const score = Math.floor((seedDocs - index - 1) / 2) + 1;
         const response = http.post(
-            `${baseUrl}/${database}/`,
+            `${baseUrl}/db/${database}`,
             JSON.stringify({ score, seed: index }),
             { headers: jsonHeaders, tags: { operation: "document_seed" } },
         );
@@ -97,7 +97,7 @@ export default function ({ database, entries, maxScore }) {
     do {
         const query = `index=score&op=${operator}&value=${boundary}&limit=${pageSize}`;
         const cursorQuery = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
-        const response = http.get(`${baseUrl}/${database}?${query}${cursorQuery}`, {
+        const response = http.get(`${baseUrl}/db/${database}?${query}${cursorQuery}`, {
             tags: { operation: "range_query", operator },
         });
         const documents = response.status === 200 ? response.json("documents") : null;
@@ -124,7 +124,7 @@ export default function ({ database, entries, maxScore }) {
 }
 
 export function teardown({ database }) {
-    const response = http.del(`${baseUrl}/${database}`, null, {
+    const response = http.del(`${baseUrl}/db/${database}`, null, {
         tags: { operation: "database_delete" },
     });
 

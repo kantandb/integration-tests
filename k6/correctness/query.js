@@ -67,7 +67,7 @@ export function setup() {
 
     const database = `query-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
     const createDatabase = http.post(
-        `${baseUrl}/`,
+        `${baseUrl}/db`,
         JSON.stringify({
             name: database,
             indexes: [{ name: "score", path: "/score" }],
@@ -90,7 +90,7 @@ export function setup() {
         }
 
         const response = http.post(
-            `${baseUrl}/${database}/`,
+            `${baseUrl}/db/${database}`,
             JSON.stringify(document),
             { headers: jsonHeaders, tags: { operation: "document_seed" } },
         );
@@ -151,7 +151,7 @@ export function queryScan({ database, entries, maxScore }) {
 // Exercise index maintenance while queries read the same database.
 export function mixedWrites({ database }) {
     const create = http.post(
-        `${baseUrl}/${database}/`,
+        `${baseUrl}/db/${database}`,
         JSON.stringify({ score: "transient", owner: __VU, revision: 0 }),
         { headers: jsonHeaders, tags: { operation: "mixed_create" } },
     );
@@ -163,7 +163,7 @@ export function mixedWrites({ database }) {
     }
 
     const replace = http.put(
-        `${baseUrl}/${database}/${id}`,
+        `${baseUrl}/db/${database}/${id}`,
         JSON.stringify({ score: "updated", owner: __VU, revision: 1 }),
         {
             headers: { ...jsonHeaders, "If-Match": createdEtag },
@@ -177,7 +177,7 @@ export function mixedWrites({ database }) {
     }
 
     const patch = http.patch(
-        `${baseUrl}/${database}/${id}`,
+        `${baseUrl}/db/${database}/${id}`,
         JSON.stringify({ revision: 2 }),
         {
             headers: {
@@ -196,7 +196,7 @@ export function mixedWrites({ database }) {
         return;
     }
 
-    const remove = http.del(`${baseUrl}/${database}/${id}`, null, {
+    const remove = http.del(`${baseUrl}/db/${database}/${id}`, null, {
         headers: { "If-Match": patchedEtag },
         tags: { operation: "mixed_delete" },
     });
@@ -217,7 +217,7 @@ function queryAll(database, path, operator, value, operation) {
 
         const response = http.request(
             "QUERY",
-            `${baseUrl}/${database}`,
+            `${baseUrl}/db/${database}`,
             JSON.stringify(body),
             { headers: jsonHeaders, tags: { operation, operator } },
         );
@@ -282,7 +282,7 @@ function same(actual, expected) {
 }
 
 export function teardown({ database }) {
-    const response = http.del(`${baseUrl}/${database}`, null, {
+    const response = http.del(`${baseUrl}/db/${database}`, null, {
         tags: { operation: "database_delete" },
     });
 

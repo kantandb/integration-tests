@@ -116,7 +116,7 @@ export function setup() {
 
     const database = `benchmark-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
     const createDatabase = http.post(
-        `${baseUrl}/`,
+        `${baseUrl}/db`,
         JSON.stringify({
             name: database,
             indexes: [{ name: "category", path: "/category" }],
@@ -134,7 +134,7 @@ export function setup() {
     const sampleEvery = Math.ceil(seedDocs / 1000);
     for (let index = 0; index < seedDocs; index += 1) {
         const response = http.post(
-            `${baseUrl}/${database}/`,
+            `${baseUrl}/db/${database}`,
             JSON.stringify({
                 category: index % categoryCount,
                 products: [{ price: index % categoryCount }],
@@ -165,7 +165,7 @@ export function setup() {
 }
 
 export function readDoc({ database, ids }) {
-    const response = http.get(`${baseUrl}/${database}/${pick(ids)}`, {
+    const response = http.get(`${baseUrl}/db/${database}/${pick(ids)}`, {
         tags: { name: "document_read", operation: "point_read" },
     });
 
@@ -180,7 +180,7 @@ export function listDocs({ database, cursors }) {
     // Start throughout the keyspace instead of repeatedly reading its hot prefix.
     const cursor = encodeURIComponent(pick(cursors));
     const response = http.get(
-        `${baseUrl}/${database}?limit=${pageSize}&cursor=${cursor}`,
+        `${baseUrl}/db/${database}?limit=${pageSize}&cursor=${cursor}`,
         { tags: { name: "document_list", operation: "primary_scan" } },
     );
 
@@ -194,7 +194,7 @@ export function listDocs({ database, cursors }) {
 export function rangeDocs({ database }) {
     const boundary = Math.floor(Math.random() * categoryCount);
     const response = http.get(
-        `${baseUrl}/${database}?index=category&op=ge&value=${boundary}&limit=${pageSize}`,
+        `${baseUrl}/db/${database}?index=category&op=ge&value=${boundary}&limit=${pageSize}`,
         { tags: { name: "category_range", operation: "range_query" } },
     );
 
@@ -235,7 +235,7 @@ export function queryScan({ database }) {
 }
 
 function pathQuery(database, query, name, operation) {
-    return http.request("QUERY", `${baseUrl}/${database}`, JSON.stringify(query), {
+    return http.request("QUERY", `${baseUrl}/db/${database}`, JSON.stringify(query), {
         headers: jsonHeaders,
         tags: { name, operation },
     });
@@ -251,7 +251,7 @@ function checkQuery(response, name) {
 
 export function updateDoc({ database, ids }) {
     const id = pick(ids);
-    const read = http.get(`${baseUrl}/${database}/${id}`, {
+    const read = http.get(`${baseUrl}/db/${database}/${id}`, {
         tags: { name: "update_read", operation: "update_read" },
     });
     const etag = read.headers.Etag;
@@ -265,7 +265,7 @@ export function updateDoc({ database, ids }) {
 
     const category = Math.floor(Math.random() * categoryCount);
     const response = http.patch(
-        `${baseUrl}/${database}/${id}`,
+        `${baseUrl}/db/${database}/${id}`,
         JSON.stringify({ category, revision: Date.now() }),
         {
             headers: {
@@ -300,7 +300,7 @@ export function createDoc({ database }) {
         payload: payload(seed),
     };
     const response = http.post(
-        `${baseUrl}/${database}/`,
+        `${baseUrl}/db/${database}`,
         JSON.stringify(document),
         {
             headers: jsonHeaders,
@@ -319,7 +319,7 @@ export function createDoc({ database }) {
 }
 
 export function teardown({ database }) {
-    const response = http.del(`${baseUrl}/${database}`, null, {
+    const response = http.del(`${baseUrl}/db/${database}`, null, {
         tags: { name: "database_delete", operation: "database_delete" },
     });
 

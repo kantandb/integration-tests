@@ -41,7 +41,7 @@ export function setup() {
 
     const database = `etag-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
     const createDatabase = http.post(
-        `${baseUrl}/`,
+        `${baseUrl}/db`,
         JSON.stringify({ name: database }),
         { headers: jsonHeaders, tags: { name: "database_create" } },
     );
@@ -55,7 +55,7 @@ export function setup() {
     }
 
     const createDocument = http.post(
-        `${baseUrl}/${database}/`,
+        `${baseUrl}/db/${database}`,
         JSON.stringify({ winner: null }),
         { headers: jsonHeaders, tags: { name: "document_create" } },
     );
@@ -78,7 +78,7 @@ export function setup() {
 
 export default function ({ database, id, etag }) {
     const response = http.put(
-        `${baseUrl}/${database}/${id}`,
+        `${baseUrl}/db/${database}/${id}`,
         JSON.stringify({ winner: __VU }),
         {
             headers: { ...jsonHeaders, "If-Match": etag },
@@ -114,7 +114,7 @@ export default function ({ database, id, etag }) {
 }
 
 export function teardown({ database, id, etag }) {
-    const read = http.get(`${baseUrl}/${database}/${id}`, {
+    const read = http.get(`${baseUrl}/db/${database}/${id}`, {
         tags: { name: "document_read" },
     });
     const finalEtag = read.headers.Etag;
@@ -130,13 +130,13 @@ export function teardown({ database, id, etag }) {
             etagPattern.test(finalEtag) && finalEtag !== etag,
     });
 
-    const removeDocument = http.del(`${baseUrl}/${database}/${id}`, null, {
+    const removeDocument = http.del(`${baseUrl}/db/${database}/${id}`, null, {
         headers: { "If-Match": etagPattern.test(finalEtag) ? finalEtag : "*" },
         tags: { name: "document_delete" },
     });
     check(removeDocument, { "document deleted": (r) => r.status === 204 });
 
-    const removeDatabase = http.del(`${baseUrl}/${database}`, null, {
+    const removeDatabase = http.del(`${baseUrl}/db/${database}`, null, {
         tags: { name: "database_delete" },
     });
     check(removeDatabase, { "database deleted": (r) => r.status === 204 });

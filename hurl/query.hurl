@@ -1,5 +1,5 @@
 # Create an isolated database for JSONPath queries.
-POST {{base_url}}/
+POST {{base_url}}/db
 Content-Type: application/json
 {
   "name": "{{database}}-query",
@@ -14,15 +14,15 @@ HTTP 201
 
 
 # Advertise QUERY support.
-OPTIONS {{base_url}}/{{database}}-query
+OPTIONS {{base_url}}/db/{{database}}-query
 HTTP 204
 [Asserts]
 header "Accept-Query" == "application/json"
-header "Allow" == "GET, QUERY, DELETE, OPTIONS"
+header "Allow" == "GET, POST, QUERY, DELETE, OPTIONS"
 
 
 # Create documents for scan and indexed queries.
-POST {{base_url}}/{{database}}-query/
+POST {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
   "score": 20,
@@ -36,7 +36,7 @@ HTTP 201
 [Captures]
 query_first_id: jsonpath "$.id"
 
-POST {{base_url}}/{{database}}-query/
+POST {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
   "score": 10,
@@ -53,7 +53,7 @@ HTTP 201
 [Captures]
 query_second_id: jsonpath "$.id"
 
-POST {{base_url}}/{{database}}-query/
+POST {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
   "products": [
@@ -73,7 +73,7 @@ HTTP 201
 [Captures]
 query_array_id: jsonpath "$.id"
 
-POST {{base_url}}/{{database}}-query/
+POST {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
   "items": {
@@ -88,7 +88,7 @@ query_object_id: jsonpath "$.id"
 
 
 # Scan wildcard results in document ID order.
-QUERY {{base_url}}/{{database}}-query
+QUERY {{base_url}}/db/{{database}}-query
 Content-Type: application/json; charset=utf-8
 {
   "path": "$.products[*].price",
@@ -106,7 +106,7 @@ jsonpath "$.cursor" == ""
 
 
 # Use index-value order and an opaque cursor.
-QUERY {{base_url}}/{{database}}-query
+QUERY {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
   "path": "$.score",
@@ -123,7 +123,7 @@ jsonpath "$.documents[0]" == "{{query_second_id}}"
 jsonpath "$.cursor" != ""
 jsonpath "$.cursor" != "{{query_second_id}}"
 
-QUERY {{base_url}}/{{database}}-query
+QUERY {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
   "path": "$.other",
@@ -136,7 +136,7 @@ HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_cursor"
 
-QUERY {{base_url}}/{{database}}-query
+QUERY {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
   "path": "$.score",
@@ -149,7 +149,7 @@ HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_cursor"
 
-QUERY {{base_url}}/{{database}}-query
+QUERY {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
   "path": "$.score",
@@ -162,12 +162,12 @@ HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_cursor"
 
-GET {{base_url}}/{{database}}-query?index=score&op=ge&value=10&cursor={{query_score_cursor}}
+GET {{base_url}}/db/{{database}}-query?index=score&op=ge&value=10&cursor={{query_score_cursor}}
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_cursor"
 
-QUERY {{base_url}}/{{database}}-query
+QUERY {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
   "path": "$['score']",
@@ -184,7 +184,7 @@ jsonpath "$.cursor" == ""
 
 
 # Distinguish array indexes from numeric object members.
-QUERY {{base_url}}/{{database}}-query
+QUERY {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
   "path": "$.items[0].sku",
@@ -196,7 +196,7 @@ jsonpath "$.documents" count == 1
 jsonpath "$.documents[0]" == "{{query_array_id}}"
 jsonpath "$.cursor" == ""
 
-QUERY {{base_url}}/{{database}}-query
+QUERY {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
   "path": "$.items['0'].sku",
@@ -210,5 +210,5 @@ jsonpath "$.cursor" == ""
 
 
 # Clean up query state.
-DELETE {{base_url}}/{{database}}-query
+DELETE {{base_url}}/db/{{database}}-query
 HTTP 204

@@ -31,7 +31,7 @@ export function setup() {
 
     const database = `load-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
     const response = http.post(
-        `${baseUrl}/`,
+        `${baseUrl}/db`,
         JSON.stringify({ name: database }),
         { headers: jsonHeaders, tags: { name: "database_create" } },
     );
@@ -46,7 +46,7 @@ export function setup() {
 export default function ({ database }) {
     const document = { owner: __VU, iteration: __ITER, active: true };
     const create = http.post(
-        `${baseUrl}/${database}/`,
+        `${baseUrl}/db/${database}`,
         JSON.stringify(document),
         { headers: jsonHeaders, tags: { name: "document_create" } },
     );
@@ -58,13 +58,13 @@ export default function ({ database }) {
         "create returned an ID": () => idPattern.test(id),
         "create returned an ETag": () => etagPattern.test(createdEtag),
         "create returned Location": (r) =>
-            r.headers.Location === `/${database}/${id}`,
+            r.headers.Location === `/db/${database}/${id}`,
     });
     if (!created) {
         return;
     }
 
-    const read = http.get(`${baseUrl}/${database}/${id}`, {
+    const read = http.get(`${baseUrl}/db/${database}/${id}`, {
         tags: { name: "document_read" },
     });
     check(read, {
@@ -76,7 +76,7 @@ export default function ({ database }) {
 
     const replacement = { owner: __VU, iteration: __ITER, active: false };
     const update = http.put(
-        `${baseUrl}/${database}/${id}`,
+        `${baseUrl}/db/${database}/${id}`,
         JSON.stringify(replacement),
         {
             headers: { ...jsonHeaders, "If-Match": createdEtag },
@@ -95,7 +95,7 @@ export default function ({ database }) {
         return;
     }
 
-    const list = http.get(`${baseUrl}/${database}?limit=1000`, {
+    const list = http.get(`${baseUrl}/db/${database}?limit=1000`, {
         tags: { name: "document_list" },
     });
     check(list, {
@@ -104,7 +104,7 @@ export default function ({ database }) {
         "list returned cursor": (r) => typeof r.json("cursor") === "string",
     });
 
-    const remove = http.del(`${baseUrl}/${database}/${id}`, null, {
+    const remove = http.del(`${baseUrl}/db/${database}/${id}`, null, {
         headers: { "If-Match": updatedEtag },
         tags: { name: "document_delete" },
     });
@@ -117,7 +117,7 @@ export default function ({ database }) {
 }
 
 export function teardown({ database }) {
-    const response = http.del(`${baseUrl}/${database}`, null, {
+    const response = http.del(`${baseUrl}/db/${database}`, null, {
         tags: { name: "database_delete" },
     });
 
