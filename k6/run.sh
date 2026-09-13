@@ -8,7 +8,7 @@ fi
 
 script=$1
 
-(cd prototype && mise run build)
+(cd server-go && mise run build)
 
 port=$((40000 + ($$ % 20000)))
 addr="${KANTAN_K6_ADDR:-127.0.0.1:$port}"
@@ -21,7 +21,7 @@ key_file="$data_dir/kantan.key"
 openssl rand -base64 32 >"$key_file"
 chmod 600 "$key_file"
 
-./prototype/kantan -addr "$addr" -data "$data_dir/db" -key-file "$key_file" \
+./server-go/kantan -addr "$addr" -data "$data_dir/db" -key-file "$key_file" \
     -bulk-concurrency "$bulk_concurrency" >"$log_file" 2>&1 &
 server_pid=$!
 

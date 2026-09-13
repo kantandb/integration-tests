@@ -1,3 +1,3 @@
-[submodule "prototype"]
-	path = prototype
-	url = https://github.com/kantandb/prototype.git
+[submodule "server-go"]
+	path = server-go
+	url = https://github.com/kantandb/server-go.git
