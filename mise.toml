@@ -26,8 +26,14 @@ run = "./k6/run.sh k6/correctness/range.js"
 [tasks.k6-query]
 run = "./k6/run.sh k6/correctness/query.js"
 
+[tasks.k6-bulk]
+run = "./k6/run.sh k6/correctness/bulk.js"
+
+[tasks.k6-bulk-benchmark]
+run = "./k6/run.sh k6/performance/bulk.js"
+
 [tasks.k6]
-depends = ["k6-etag", "k6-range", "k6-query"]
+depends = ["k6-etag", "k6-range", "k6-query", "k6-bulk"]
 
 [tasks.check]
 depends = ["hurlfmt-check", "hurl"]

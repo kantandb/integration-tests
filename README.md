@@ -16,9 +16,11 @@ Each task starts its own server with temporary storage.
 ```sh
 mise run k6-load      # CRUD load
 mise run k6-etag      # concurrent conditional writes
-mise run k6-benchmark # storage benchmark
 mise run k6-range     # secondary index range queries
 mise run k6-query     # concurrent JSONPath queries and writes
+mise run k6-bulk      # bulk transfer correctness
+mise run k6-benchmark # storage benchmark
+mise run k6-bulk-benchmark # bulk transfer benchmark
 mise run k6           # all correctness tests
 ```
 
@@ -52,6 +54,10 @@ operator while concurrent writes maintain the same database's index. Configure
 it with `QUERY_VUS`, `QUERY_ITERATIONS`, `QUERY_SEED_DOCS`, `QUERY_PAGE_SIZE`,
 and `QUERY_MAX_DURATION`.
 
+The bulk correctness test verifies NDJSON round trips, regenerated IDs, ETags,
+rebuilt indexes, and atomic rejection. Configure it with `BULK_DOCS`,
+`BULK_PAYLOAD_BYTES`, `BULK_ITERATIONS`, and `BULK_MAX_DURATION`.
+
 The benchmark seeds 10,000 indexed 1 KiB documents, then runs point reads,
 primary scans, GET range queries, indexed and scan-backed QUERY requests,
 indexed updates, and indexed creates for two minutes. It reports average,
@@ -68,6 +74,18 @@ mise run k6-benchmark
 ```
 
 `BENCHMARK_PAGE_SIZE` sets scan page size. `BENCHMARK_SETUP_TIMEOUT` allows
-longer seed runs. Set `K6_SUMMARY_EXPORT=summary.json` for machine-readable
-results. Keep all settings fixed when comparing revisions and run each revision
-several times.
+longer seed runs.
+
+The bulk benchmark measures import and export latency and MiB/s using fresh
+indexed databases. Configure it with `BULK_BENCHMARK_VUS`,
+`BULK_BENCHMARK_ITERATIONS`, `BULK_BENCHMARK_DOCS`,
+`BULK_BENCHMARK_PAYLOAD_BYTES`, and `BULK_BENCHMARK_MAX_DURATION`. Match server
+concurrency when using multiple VUs:
+
+```sh
+KANTAN_K6_BULK_CONCURRENCY=4 BULK_BENCHMARK_VUS=4 \
+mise run k6-bulk-benchmark
+```
+
+Set `K6_SUMMARY_EXPORT=summary.json` for machine-readable results. Keep all
+settings fixed when comparing revisions and run each revision several times.

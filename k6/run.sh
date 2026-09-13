@@ -13,6 +13,7 @@ script=$1
 port=$((40000 + ($$ % 20000)))
 addr="${KANTAN_K6_ADDR:-127.0.0.1:$port}"
 base_url="http://$addr"
+bulk_concurrency="${KANTAN_K6_BULK_CONCURRENCY:-1}"
 data_dir=$(mktemp -d "${TMPDIR:-/tmp}/kantan-k6.XXXXXX")
 log_file="$data_dir/server.log"
 key_file="$data_dir/kantan.key"
@@ -20,7 +21,8 @@ key_file="$data_dir/kantan.key"
 openssl rand -base64 32 >"$key_file"
 chmod 600 "$key_file"
 
-./prototype/kantan -addr "$addr" -data "$data_dir/db" -key-file "$key_file" >"$log_file" 2>&1 &
+./prototype/kantan -addr "$addr" -data "$data_dir/db" -key-file "$key_file" \
+    -bulk-concurrency "$bulk_concurrency" >"$log_file" 2>&1 &
 server_pid=$!
 
 cleanup() {
