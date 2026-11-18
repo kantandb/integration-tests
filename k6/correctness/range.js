@@ -54,7 +54,7 @@ export function setup() {
         `${baseUrl}/db`,
         JSON.stringify({
             name: database,
-            indexes: [{ name: "score", path: "/score" }],
+            indices: [{ name: "score", path: "/score" }],
         }),
         { headers: jsonHeaders, tags: { operation: "database_seed" } },
     );
@@ -95,11 +95,12 @@ export default function ({ database, entries, maxScore }) {
     let pages = 0;
 
     do {
-        const query = `index=score&op=${operator}&value=${boundary}&limit=${pageSize}`;
-        const cursorQuery = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
-        const response = http.get(`${baseUrl}/db/${database}?${query}${cursorQuery}`, {
-            tags: { operation: "range_query", operator },
-        });
+        const response = http.request(
+            "QUERY",
+            `${baseUrl}/db/${database}`,
+            JSON.stringify({ index: "score", op: operator, value: boundary, limit: pageSize, cursor }),
+            { headers: jsonHeaders, tags: { operation: "range_query", operator } },
+        );
         const documents = response.status === 200 ? response.json("documents") : null;
         const nextCursor = response.status === 200 ? response.json("cursor") : null;
 
@@ -111,7 +112,13 @@ export default function ({ database, entries, maxScore }) {
             return;
         }
 
-        actual.push(...documents);
+        check(documents, {
+            "range records include bodies and revisions": (records) => records.every((record) =>
+                /^[0-9a-f]{32}$/.test(record.rev) &&
+                entries.some((entry) => entry.id === record.id && entry.score === record.doc.score),
+            ),
+        });
+        actual.push(...documents.map((record) => record.id));
         cursor = nextCursor;
         pages += 1;
     } while (cursor && pages <= Math.ceil(expected.length / pageSize));

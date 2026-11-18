@@ -10,7 +10,7 @@ POST {{base_url}}/db
 Content-Type: application/json
 {
   "name": "{{database}}-bulk-target",
-  "indexes": [
+  "indices": [
     {
       "name": "name",
       "path": "/name"
@@ -52,7 +52,7 @@ body contains "{\"name\":\"first\",\"rank\":1}\n"
 body contains "{\"name\":\"second\",\"rank\":2}\n"
 
 
-# Import values with new IDs and rebuilt indexes.
+# Import values with new IDs and rebuilt indices.
 POST {{base_url}}/bulk/{{database}}-bulk-target
 Content-Type: application/x-ndjson; charset=utf-8
 ```
@@ -63,14 +63,19 @@ HTTP 200
 jsonpath "$.success" == true
 body == "{\"success\":true,\"error\":{}}"
 
-GET {{base_url}}/db/{{database}}-bulk-target?index=name&value=%22first%22
+QUERY {{base_url}}/db/{{database}}-bulk-target
+Content-Type: application/json
+{
+  "index": "name",
+  "value": "first"
+}
 HTTP 200
 [Captures]
-bulk_target_first_id: jsonpath "$.documents[0]"
+bulk_target_first_id: jsonpath "$.documents[0].id"
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" != "{{bulk_first_id}}"
-jsonpath "$.documents[0]" != "{{bulk_second_id}}"
+jsonpath "$.documents[0].id" != "{{bulk_first_id}}"
+jsonpath "$.documents[0].id" != "{{bulk_second_id}}"
 
 GET {{base_url}}/db/{{database}}-bulk-target/{{bulk_target_first_id}}
 HTTP 200
@@ -79,12 +84,17 @@ header "ETag" matches /^"[0-9a-f]{32}"$/
 jsonpath "$.name" == "first"
 jsonpath "$.rank" == 1
 
-GET {{base_url}}/db/{{database}}-bulk-target?index=name&value=%22second%22
+QUERY {{base_url}}/db/{{database}}-bulk-target
+Content-Type: application/json
+{
+  "index": "name",
+  "value": "second"
+}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" != "{{bulk_first_id}}"
-jsonpath "$.documents[0]" != "{{bulk_second_id}}"
+jsonpath "$.documents[0].id" != "{{bulk_first_id}}"
+jsonpath "$.documents[0].id" != "{{bulk_second_id}}"
 
 GET {{base_url}}/bulk/{{database}}-bulk-target
 HTTP 200
@@ -115,7 +125,9 @@ jsonpath "$.success" == false
 jsonpath "$.error.code" == "invalid_document"
 jsonpath "$.error.line" == 2
 
-GET {{base_url}}/db/{{database}}-bulk-invalid
+QUERY {{base_url}}/db/{{database}}-bulk-invalid
+Content-Type: application/json
+{}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 0

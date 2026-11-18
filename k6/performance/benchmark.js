@@ -119,7 +119,7 @@ export function setup() {
         `${baseUrl}/db`,
         JSON.stringify({
             name: database,
-            indexes: [{ name: "category", path: "/category" }],
+            indices: [{ name: "category", path: "/category" }],
         }),
         { headers: jsonHeaders, tags: { name: "database_seed" } },
     );
@@ -154,12 +154,20 @@ export function setup() {
 
         if (index % sampleEvery === 0) {
             ids.push(id);
-
-            if (index < seedDocs - pageSize) {
-                cursors.push(id);
-            }
         }
     }
+
+    // Sample valid opaque cursors across the seeded keyspace.
+    let cursor = "";
+    do {
+        const response = pathQuery(database, { limit: pageSize, cursor }, "cursor_seed", "cursor_seed");
+        if (response.status !== 200) {
+            fail(`cursor seed failed: ${response.status} ${response.body}`);
+        }
+
+        cursors.push(cursor);
+        cursor = response.json("cursor");
+    } while (cursor);
 
     return { database, ids, cursors };
 }
@@ -178,24 +186,25 @@ export function readDoc({ database, ids }) {
 
 export function listDocs({ database, cursors }) {
     // Start throughout the keyspace instead of repeatedly reading its hot prefix.
-    const cursor = encodeURIComponent(pick(cursors));
-    const response = http.get(
-        `${baseUrl}/db/${database}?limit=${pageSize}&cursor=${cursor}`,
-        { tags: { name: "document_list", operation: "primary_scan" } },
+    const cursor = pick(cursors);
+    const response = pathQuery(
+        database, { limit: pageSize, cursor }, "document_list", "primary_scan",
     );
 
     check(response, {
         "documents listed": (r) => r.status === 200,
-        "list returned a full page": (r) => r.json("documents").length === pageSize,
+        "list returned a bounded page": (r) =>
+            r.json("documents").length > 0 && r.json("documents").length <= pageSize,
         "list returned cursor": (r) => typeof r.json("cursor") === "string",
     });
 }
 
 export function rangeDocs({ database }) {
     const boundary = Math.floor(Math.random() * categoryCount);
-    const response = http.get(
-        `${baseUrl}/db/${database}?index=category&op=ge&value=${boundary}&limit=${pageSize}`,
-        { tags: { name: "category_range", operation: "range_query" } },
+    const response = pathQuery(
+        database,
+        { index: "category", op: "ge", value: boundary, limit: pageSize },
+        "category_range", "range_query",
     );
 
     check(response, {

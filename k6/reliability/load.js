@@ -95,12 +95,16 @@ export default function ({ database }) {
         return;
     }
 
-    const list = http.get(`${baseUrl}/db/${database}?limit=1000`, {
+    const list = http.request("QUERY", `${baseUrl}/db/${database}`, '{"limit":1000}', {
+        headers: jsonHeaders,
         tags: { name: "document_list" },
     });
     check(list, {
         "documents listed": (r) => r.status === 200,
-        "list contains document": (r) => r.json("documents").includes(id),
+        "list contains document": (r) => r.json("documents").some((record) =>
+            record.id === id && `"${record.rev}"` === updatedEtag &&
+            record.doc.active === false,
+        ),
         "list returned cursor": (r) => typeof r.json("cursor") === "string",
     });
 

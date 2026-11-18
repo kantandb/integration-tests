@@ -59,7 +59,7 @@ rebuilt indexes, and atomic rejection. Configure it with `BULK_DOCS`,
 `BULK_PAYLOAD_BYTES`, `BULK_ITERATIONS`, and `BULK_MAX_DURATION`.
 
 The benchmark seeds 10,000 indexed 1 KiB documents, then runs point reads,
-primary scans, GET range queries, indexed and scan-backed QUERY requests,
+unfiltered, named-index, and JSONPath QUERY requests,
 indexed updates, and indexed creates for two minutes. It reports average,
 median, p90, p95, p99, maximum, and request count for each operation. Configure
 it with:

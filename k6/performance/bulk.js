@@ -67,7 +67,7 @@ export default function () {
         `${baseUrl}/db`,
         JSON.stringify({
             name: database,
-            indexes: [{ name: "category", path: "/category" }],
+            indices: [{ name: "category", path: "/category" }],
         }),
         {
             headers: jsonHeaders,

@@ -22,19 +22,19 @@ POST {{base_url}}/db
 Content-Type: application/json
 {
   "name": "{{database}}",
-  "indexes": null
+  "indices": null
 }
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_request"
 
 
-# Query validation distinguishes malformed and missing indexes.
+# Query validation distinguishes malformed and missing indices.
 POST {{base_url}}/db
 Content-Type: application/json
 {
   "name": "{{database}}",
-  "indexes": [
+  "indices": [
     {
       "name": "active",
       "path": "/active"
@@ -43,53 +43,116 @@ Content-Type: application/json
 }
 HTTP 201
 
-GET {{base_url}}/db/{{database}}?index=active
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "active"
+}
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 
-GET {{base_url}}/db/{{database}}?op=eq
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "op": "eq"
+}
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 
-GET {{base_url}}/db/{{database}}?index=active&op=bad&value=true
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "active",
+  "op": "bad",
+  "value": true
+}
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 
-GET {{base_url}}/db/{{database}}?index=active&op=lt&value=true
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "active",
+  "op": "lt",
+  "value": true
+}
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 
-GET {{base_url}}/db/{{database}}?index=active&value=%7B%7D
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "active",
+  "value": {}
+}
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 
-GET {{base_url}}/db/{{database}}?index=active&index=active&value=true
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+```
+{"index":"active","index":"active","value":true}
+```
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 
-GET {{base_url}}/db/{{database}}?unknown=true
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "unknown": "true"
+}
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 
-GET {{base_url}}/db/{{database}}?index=missing&value=true
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "missing",
+  "value": true
+}
 HTTP 404
 [Asserts]
 jsonpath "$.error.code" == "index_not_found"
 
-GET {{base_url}}/db/{{database}}?index=active&value=true&cursor=bad
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "active",
+  "value": true,
+  "cursor": "bad"
+}
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_cursor"
 
 
+# GET no longer accepts document query parameters.
+GET {{base_url}}/db/{{database}}?limit=1
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+jsonpath "$.error.message" == "URI query parameters are not supported"
+
+
 # QUERY rejects invalid request contracts.
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "active",
+  "path": "$.active",
+  "value": true
+}
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
 QUERY {{base_url}}/db/{{database}}?limit=1
 Content-Type: application/json
 {

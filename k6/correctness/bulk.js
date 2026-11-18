@@ -129,14 +129,9 @@ export default function ({ source, body, sourceIds }) {
     });
 
     const group = 0;
-    const indexed = http.get(
-        `${baseUrl}/db/${target}?index=group&value=${group}&limit=1000`,
-        { tags: { operation: "imported_index_query" } },
-    );
+    const indexed = listIDs(target, { index: "group", value: group }, "imported_index_query");
     check(indexed, {
-        "imported index queried": (r) => r.status === 200,
-        "imported index is complete": (r) =>
-            r.status === 200 && r.json("documents").length === groupCount(group),
+        "imported index is complete": (ids) => ids.length === groupCount(group),
     });
 
     const reexported = http.get(`${baseUrl}/bulk/${target}`, {
@@ -175,7 +170,7 @@ export function teardown({ source }) {
 function createDatabase(name, indexed) {
     const request = { name };
     if (indexed) {
-        request.indexes = [{ name: "group", path: "/group" }];
+        request.indices = [{ name: "group", path: "/group" }];
     }
 
     const response = http.post(`${baseUrl}/db`, JSON.stringify(request), {
@@ -195,16 +190,28 @@ function deleteDatabase(name) {
     check(response, { "bulk database deleted": (r) => r.status === 204 });
 }
 
-function listIDs(database) {
-    const response = http.get(`${baseUrl}/db/${database}?limit=1000`, {
-        tags: { operation: "document_list" },
-    });
+function listIDs(database, query = {}, operation = "document_list") {
+    const ids = [];
+    let cursor = "";
 
-    if (response.status !== 200) {
-        fail(`document list failed: ${response.status} ${response.body}`);
-    }
+    // Full records can reach the byte budget before the count limit.
+    do {
+        const response = http.request(
+            "QUERY", `${baseUrl}/db/${database}`,
+            JSON.stringify({ ...query, limit: 1000, cursor }),
+            { headers: jsonHeaders, tags: { operation } },
+        );
 
-    return response.json("documents");
+        if (response.status !== 200) {
+            fail(`document list failed: ${response.status} ${response.body}`);
+        }
+
+        ids.push(...response.json("documents").map((record) => record.id));
+        cursor = response.json("cursor");
+    } while (cursor && ids.length <= documents);
+
+    check(cursor, { "bulk document list terminates": (value) => value === "" });
+    return ids;
 }
 
 function makeBody() {

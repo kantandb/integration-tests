@@ -70,7 +70,7 @@ export function setup() {
         `${baseUrl}/db`,
         JSON.stringify({
             name: database,
-            indexes: [{ name: "score", path: "/score" }],
+            indices: [{ name: "score", path: "/score" }],
         }),
         { headers: jsonHeaders, tags: { operation: "database_seed" } },
     );
@@ -232,7 +232,14 @@ function queryAll(database, path, operator, value, operation) {
             return documents;
         }
 
-        documents.push(...ids);
+        check(ids, {
+            "QUERY records include bodies and revisions": (records) => records.every((record) =>
+                /^[0-9a-f]{32}$/.test(record.rev) &&
+                typeof record.doc === "object" && record.doc !== null &&
+                typeof record.doc.seed === "number",
+            ),
+        });
+        documents.push(...ids.map((record) => record.id));
         cursor = next;
         pages += 1;
     } while (cursor && pages <= seedDocs + 1);

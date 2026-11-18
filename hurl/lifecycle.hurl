@@ -19,7 +19,7 @@ POST {{base_url}}/db
 Content-Type: application/json; charset=utf-8
 {
   "name": "{{database}}",
-  "indexes": [
+  "indices": [
     {
       "name": "email",
       "path": "/email"
@@ -38,13 +38,13 @@ HTTP 201
 [Asserts]
 header "Location" == "/db/{{database}}"
 jsonpath "$.name" == "{{database}}"
-jsonpath "$.indexes" count == 3
-jsonpath "$.indexes[0].name" == "email"
-jsonpath "$.indexes[0].path" == "/email"
-jsonpath "$.indexes[1].name" == "active"
-jsonpath "$.indexes[1].path" == "/active"
-jsonpath "$.indexes[2].name" == "score"
-jsonpath "$.indexes[2].path" == "/score"
+jsonpath "$.indices" count == 3
+jsonpath "$.indices[0].name" == "email"
+jsonpath "$.indices[0].path" == "/email"
+jsonpath "$.indices[1].name" == "active"
+jsonpath "$.indices[1].path" == "/active"
+jsonpath "$.indices[2].name" == "score"
+jsonpath "$.indices[2].path" == "/score"
 
 
 # Find the database through the paginated list.
@@ -100,93 +100,177 @@ header "ETag" matches /^"[0-9a-f]{32}"$/
 jsonpath "$.id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 
-# Page through document IDs.
-GET {{base_url}}/db/{{database}}?limit=1
+# Read database information without listing documents.
+GET {{base_url}}/db/{{database}}
+HTTP 200
+[Asserts]
+header "Accept-Query" == "application/json"
+jsonpath "$.name" == "{{database}}"
+jsonpath "$.indices" count == 3
+jsonpath "$.doc_count" == 2
+jsonpath "$.documents" not exists
+
+
+# Page through full documents.
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "limit": 1
+}
 HTTP 200
 [Captures]
 document_cursor: jsonpath "$.cursor"
-first_listed: jsonpath "$.documents[0]"
+first_listed: jsonpath "$.documents[0].id"
+listed_rev: jsonpath "$.documents[0].rev"
 [Asserts]
 header "Accept-Query" == "application/json"
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+jsonpath "$.documents[0].id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 jsonpath "$.cursor" != ""
 
-GET {{base_url}}/db/{{database}}?limit=1&cursor={{document_cursor}}
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "limit": 1,
+  "cursor": "{{document_cursor}}"
+}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-jsonpath "$.documents[0]" != "{{first_listed}}"
+jsonpath "$.documents[0].id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+jsonpath "$.documents[0].id" != "{{first_listed}}"
+jsonpath "$.documents[0].doc.name" == "second"
+jsonpath "$.documents[0].rev" matches /^[0-9a-f]{32}$/
 jsonpath "$.cursor" == ""
 
 
 # Query indexed values with an opaque cursor.
-GET {{base_url}}/db/{{database}}?index=active&value=true&limit=1
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "active",
+  "value": true,
+  "limit": 1
+}
 HTTP 200
 [Captures]
 active_cursor: jsonpath "$.cursor"
-active_first: jsonpath "$.documents[0]"
+active_first: jsonpath "$.documents[0].id"
 [Asserts]
 jsonpath "$.documents" count == 1
 jsonpath "$.cursor" != ""
 
-GET {{base_url}}/db/{{database}}?index=active&value=true&limit=1&cursor={{active_cursor}}
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "active",
+  "value": true,
+  "limit": 1,
+  "cursor": "{{active_cursor}}"
+}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" != "{{active_first}}"
+jsonpath "$.documents[0].id" != "{{active_first}}"
 jsonpath "$.cursor" == ""
 
-GET {{base_url}}/db/{{database}}?index=email&value=%22alice%40example.com%22
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "email",
+  "value": "alice@example.com"
+}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{first_id}}"
+jsonpath "$.documents[0].id" == "{{first_id}}"
+jsonpath "$.documents[0].doc.email" == "alice@example.com"
+jsonpath "$.documents[0].rev" == "{{listed_rev}}"
 jsonpath "$.cursor" == ""
 
 
 # Query indexed comparisons in value order and page with an equivalent numeric value.
-GET {{base_url}}/db/{{database}}?index=score&op=ge&value=10&limit=1
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "score",
+  "op": "ge",
+  "value": 10,
+  "limit": 1
+}
 HTTP 200
 [Captures]
 score_cursor: jsonpath "$.cursor"
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{second_id}}"
+jsonpath "$.documents[0].id" == "{{second_id}}"
 jsonpath "$.cursor" != ""
 
-GET {{base_url}}/db/{{database}}?index=score&op=gt&value=10&limit=1&cursor={{score_cursor}}
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "score",
+  "op": "gt",
+  "value": 10,
+  "limit": 1,
+  "cursor": "{{score_cursor}}"
+}
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_cursor"
 
-GET {{base_url}}/db/{{database}}?index=score&op=ge&value=1e1&limit=1&cursor={{score_cursor}}
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "score",
+  "op": "ge",
+  "value": 10,
+  "limit": 1,
+  "cursor": "{{score_cursor}}"
+}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{first_id}}"
+jsonpath "$.documents[0].id" == "{{first_id}}"
 jsonpath "$.cursor" == ""
 
-GET {{base_url}}/db/{{database}}?index=score&op=lt&value=20
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "score",
+  "op": "lt",
+  "value": 20
+}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{second_id}}"
+jsonpath "$.documents[0].id" == "{{second_id}}"
 jsonpath "$.cursor" == ""
 
-GET {{base_url}}/db/{{database}}?index=score&op=le&value=10
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "score",
+  "op": "le",
+  "value": 10
+}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{second_id}}"
+jsonpath "$.documents[0].id" == "{{second_id}}"
 jsonpath "$.cursor" == ""
 
-GET {{base_url}}/db/{{database}}?index=score&op=gt&value=10
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "score",
+  "op": "gt",
+  "value": 10
+}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{first_id}}"
+jsonpath "$.documents[0].id" == "{{first_id}}"
 jsonpath "$.cursor" == ""
 
 
@@ -201,7 +285,7 @@ jsonpath "$.nested.a" == 1
 
 PUT {{base_url}}/db/{{database}}/{{first_id}}
 Content-Type: application/json
-If-Match: {{first_etag}}
+If-Match: "{{listed_rev}}"
 {
   "name": "replacement",
   "count": 1
@@ -214,17 +298,27 @@ header "ETag" != "{{first_etag}}"
 jsonpath "$.name" == "replacement"
 jsonpath "$.count" == 1
 
-GET {{base_url}}/db/{{database}}?index=email&value=%22alice%40example.com%22
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "email",
+  "value": "alice@example.com"
+}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 0
 jsonpath "$.cursor" == ""
 
-GET {{base_url}}/db/{{database}}?index=active&value=true
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "active",
+  "value": true
+}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{second_id}}"
+jsonpath "$.documents[0].id" == "{{second_id}}"
 jsonpath "$.cursor" == ""
 
 
@@ -266,11 +360,16 @@ jsonpath "$.count" == 1
 jsonpath "$.active" == false
 jsonpath "$.enabled" == true
 
-GET {{base_url}}/db/{{database}}?index=active&value=false
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{
+  "index": "active",
+  "value": false
+}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{first_id}}"
+jsonpath "$.documents[0].id" == "{{first_id}}"
 jsonpath "$.cursor" == ""
 
 PATCH {{base_url}}/db/{{database}}/{{first_id}}
@@ -307,11 +406,22 @@ DELETE {{base_url}}/db/{{database}}/{{second_id}}
 If-Match: *
 HTTP 204
 
-GET {{base_url}}/db/{{database}}
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{}
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 0
 jsonpath "$.cursor" == ""
+
+
+# Confirm database counts follow document deletion.
+GET {{base_url}}/db/{{database}}
+HTTP 200
+[Asserts]
+jsonpath "$.name" == "{{database}}"
+jsonpath "$.indices" count == 3
+jsonpath "$.doc_count" == 0
 
 
 # Delete the database and confirm it is gone.

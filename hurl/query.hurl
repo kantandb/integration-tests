@@ -3,7 +3,7 @@ POST {{base_url}}/db
 Content-Type: application/json
 {
   "name": "{{database}}-query",
-  "indexes": [
+  "indices": [
     {
       "name": "score",
       "path": "/score"
@@ -100,8 +100,12 @@ HTTP 200
 header "Accept-Query" == "application/json"
 header "Cache-Control" == "no-store"
 jsonpath "$.documents" count == 2
-jsonpath "$.documents[0]" == "{{query_first_id}}"
-jsonpath "$.documents[1]" == "{{query_second_id}}"
+jsonpath "$.documents[0].id" == "{{query_first_id}}"
+jsonpath "$.documents[1].id" == "{{query_second_id}}"
+jsonpath "$.documents[0].rev" matches /^[0-9a-f]{32}$/
+jsonpath "$.documents[0].doc.score" == 20
+jsonpath "$.documents[0].doc.products[0].price" == 5
+jsonpath "$.documents[1].doc.products[1].price" == 8
 jsonpath "$.cursor" == ""
 
 
@@ -119,7 +123,7 @@ HTTP 200
 query_score_cursor: jsonpath "$.cursor"
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{query_second_id}}"
+jsonpath "$.documents[0].id" == "{{query_second_id}}"
 jsonpath "$.cursor" != ""
 jsonpath "$.cursor" != "{{query_second_id}}"
 
@@ -162,7 +166,14 @@ HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_cursor"
 
-GET {{base_url}}/db/{{database}}-query?index=score&op=ge&value=10&cursor={{query_score_cursor}}
+QUERY {{base_url}}/db/{{database}}-query
+Content-Type: application/json
+{
+  "index": "score",
+  "op": "ge",
+  "value": 10,
+  "cursor": "{{query_score_cursor}}"
+}
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_cursor"
@@ -179,11 +190,12 @@ Content-Type: application/json
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{query_first_id}}"
+jsonpath "$.documents[0].id" == "{{query_first_id}}"
+jsonpath "$.documents[0].doc.score" == 20
 jsonpath "$.cursor" == ""
 
 
-# Distinguish array indexes from numeric object members.
+# Distinguish array indices from numeric object members.
 QUERY {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
@@ -193,7 +205,7 @@ Content-Type: application/json
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{query_array_id}}"
+jsonpath "$.documents[0].id" == "{{query_array_id}}"
 jsonpath "$.cursor" == ""
 
 QUERY {{base_url}}/db/{{database}}-query
@@ -205,7 +217,7 @@ Content-Type: application/json
 HTTP 200
 [Asserts]
 jsonpath "$.documents" count == 1
-jsonpath "$.documents[0]" == "{{query_object_id}}"
+jsonpath "$.documents[0].id" == "{{query_object_id}}"
 jsonpath "$.cursor" == ""
 
 
