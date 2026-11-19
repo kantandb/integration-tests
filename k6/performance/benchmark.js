@@ -1,16 +1,17 @@
 import http from "k6/http";
 import { check, fail } from "k6";
 import { Counter } from "k6/metrics";
+import { ndjson, parseNDJSON, query } from "../query.js";
 
 const baseUrl = __ENV.BASE_URL;
 const duration = __ENV.BENCHMARK_DURATION || "2m";
 const seedDocs = Number(__ENV.BENCHMARK_SEED_DOCS || 10000);
-const pageSize = Number(__ENV.BENCHMARK_PAGE_SIZE || 100);
+const resultLimit = Number(__ENV.BENCHMARK_RESULT_LIMIT || 100);
 const payloadBytes = Number(__ENV.BENCHMARK_PAYLOAD_BYTES || 1024);
 const readRate = Number(__ENV.BENCHMARK_READ_RATE || 100);
 const listRate = Number(__ENV.BENCHMARK_LIST_RATE || 5);
 const rangeRate = Number(__ENV.BENCHMARK_RANGE_RATE || 5);
-const queryIndexRate = Number(__ENV.BENCHMARK_QUERY_INDEX_RATE || 5);
+const projectionRate = Number(__ENV.BENCHMARK_PROJECTION_RATE || 5);
 const queryScanRate = Number(__ENV.BENCHMARK_QUERY_SCAN_RATE || 2);
 const updateRate = Number(__ENV.BENCHMARK_UPDATE_RATE || 20);
 const createRate = Number(__ENV.BENCHMARK_CREATE_RATE || 10);
@@ -19,12 +20,12 @@ const idPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const etagPattern = /^"[0-9a-f]{32}"$/;
 
-const counts = [seedDocs, pageSize, payloadBytes];
+const counts = [seedDocs, resultLimit, payloadBytes];
 const rates = [
     readRate,
     listRate,
     rangeRate,
-    queryIndexRate,
+    projectionRate,
     queryScanRate,
     updateRate,
     createRate,
@@ -35,8 +36,8 @@ if (counts.some((value) => !Number.isInteger(value) || value < 1)) {
 if (rates.some((value) => !Number.isInteger(value) || value < 1)) {
     throw new Error("benchmark rates must be positive integers");
 }
-if (pageSize > 1000 || pageSize >= seedDocs) {
-    throw new Error("page size must be at most 1000 and less than seed docs");
+if (resultLimit > 1000 || resultLimit >= seedDocs) {
+    throw new Error("result limit must be at most 1000 and less than seed docs");
 }
 
 const writes = new Counter("writes");
@@ -52,7 +53,7 @@ export const options = {
         read: scenario("readDoc", readRate, "read"),
         list: scenario("listDocs", listRate, "read"),
         range: scenario("rangeDocs", rangeRate, "read"),
-        queryIndex: scenario("queryIndex", queryIndexRate, "read"),
+        projection: scenario("projectDocs", projectionRate, "read"),
         queryScan: scenario("queryScan", queryScanRate, "read"),
         update: scenario("updateDoc", updateRate, "write"),
         create: scenario("createDoc", createRate, "write"),
@@ -62,10 +63,10 @@ export const options = {
         http_req_failed: ["rate<0.01"],
         dropped_iterations: ["count==0"],
         "http_req_duration{operation:point_read}": ["p(95)<1000"],
-        "http_req_duration{operation:primary_scan}": ["p(95)<1000"],
-        "http_req_duration{operation:range_query}": ["p(95)<1000"],
-        "http_req_duration{operation:index_query}": ["p(95)<1000"],
-        "http_req_duration{operation:scan_query}": ["p(95)<1500"],
+        "http_req_duration{operation:primary_scan,status:200}": ["p(95)<1000"],
+        "http_req_duration{operation:range_query,status:200}": ["p(95)<1000"],
+        "http_req_duration{operation:projection_query,status:200}": ["p(95)<1000"],
+        "http_req_duration{operation:scan_query,status:200}": ["p(95)<1500"],
         "http_req_duration{operation:update_read}": ["p(95)<1000"],
         "http_req_duration{operation:indexed_update}": ["p(95)<1500"],
         "http_req_duration{operation:indexed_create}": ["p(95)<1500"],
@@ -130,7 +131,6 @@ export function setup() {
 
     // Sample IDs across the keyspace without copying the full set into every VU.
     const ids = [];
-    const cursors = [];
     const sampleEvery = Math.ceil(seedDocs / 1000);
     for (let index = 0; index < seedDocs; index += 1) {
         const response = http.post(
@@ -157,19 +157,7 @@ export function setup() {
         }
     }
 
-    // Sample valid opaque cursors across the seeded keyspace.
-    let cursor = "";
-    do {
-        const response = pathQuery(database, { limit: pageSize, cursor }, "cursor_seed", "cursor_seed");
-        if (response.status !== 200) {
-            fail(`cursor seed failed: ${response.status} ${response.body}`);
-        }
-
-        cursors.push(cursor);
-        cursor = response.json("cursor");
-    } while (cursor);
-
-    return { database, ids, cursors };
+    return { database, ids };
 }
 
 export function readDoc({ database, ids }) {
@@ -184,77 +172,38 @@ export function readDoc({ database, ids }) {
     });
 }
 
-export function listDocs({ database, cursors }) {
-    // Start throughout the keyspace instead of repeatedly reading its hot prefix.
-    const cursor = pick(cursors);
-    const response = pathQuery(
-        database, { limit: pageSize, cursor }, "document_list", "primary_scan",
-    );
-
-    check(response, {
-        "documents listed": (r) => r.status === 200,
-        "list returned a bounded page": (r) =>
-            r.json("documents").length > 0 && r.json("documents").length <= pageSize,
-        "list returned cursor": (r) => typeof r.json("cursor") === "string",
-    });
+export function listDocs({ database }) {
+    checkQuery(database, ".", "primary_scan", (doc) => doc.payload?.length === payloadBytes);
 }
 
 export function rangeDocs({ database }) {
     const boundary = Math.floor(Math.random() * categoryCount);
-    const response = pathQuery(
-        database,
-        { index: "category", op: "ge", value: boundary, limit: pageSize },
-        "category_range", "range_query",
-    );
-
-    check(response, {
-        "range queried": (r) => r.status === 200,
-        "range returned documents": (r) => r.json("documents").length > 0,
-        "range returned cursor": (r) => typeof r.json("cursor") === "string",
-    });
+    checkQuery(database, `select(.category >= ${boundary})`, "range_query",
+        (doc) => typeof doc.category === "number" && doc.category >= boundary);
 }
 
-export function queryIndex({ database }) {
-    const boundary = Math.floor(Math.random() * categoryCount);
-    const response = pathQuery(
-        database,
-        { path: "$.category", op: "ge", value: boundary, limit: pageSize },
-        "category_path_query",
-        "index_query",
-    );
-
-    checkQuery(response, "indexed QUERY");
+export function projectDocs({ database }) {
+    checkQuery(database, ".category", "projection_query",
+        (category) => Number.isInteger(category) && category >= 0 && category < categoryCount);
 }
 
 export function queryScan({ database }) {
-    const boundary = Math.floor(Math.random() * categoryCount);
-    const response = pathQuery(
-        database,
-        {
-            path: "$.products[*].price",
-            op: "ge",
-            value: boundary,
-            limit: pageSize,
-        },
-        "product_path_query",
-        "scan_query",
-    );
-
-    checkQuery(response, "scan QUERY");
+    const boundary = Math.floor(Math.random() * Math.min(categoryCount, seedDocs));
+    checkQuery(database, `.products[]?.price | select(. >= ${boundary})`, "scan_query",
+        (price) => Number.isInteger(price) && price >= boundary);
 }
 
-function pathQuery(database, query, name, operation) {
-    return http.request("QUERY", `${baseUrl}/db/${database}`, JSON.stringify(query), {
-        headers: jsonHeaders,
-        tags: { name, operation },
-    });
-}
+function checkQuery(database, filter, operation, matches) {
+    // Consume one scan and stop once jq emits the requested number of values.
+    const program = `limit(${resultLimit}; (., inputs) | (${filter})), halt`;
+    const response = query(baseUrl, database, program, { name: operation, operation }, ndjson);
+    const values = parseNDJSON(response);
 
-function checkQuery(response, name) {
     check(response, {
-        [`${name} returned`]: (r) => r.status === 200,
-        [`${name} returned documents`]: (r) => r.json("documents").length > 0,
-        [`${name} returned cursor`]: (r) => typeof r.json("cursor") === "string",
+        [`${operation} succeeded`]: (r) => r.status === 200,
+        [`${operation} uses NDJSON`]: (r) => r.headers["Content-Type"] === ndjson,
+        [`${operation} returned bounded results`]: () => values.length > 0 && values.length <= resultLimit,
+        [`${operation} returned matching values`]: () => values.every(matches),
     });
 }
 

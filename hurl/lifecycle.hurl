@@ -104,174 +104,26 @@ jsonpath "$.id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}
 GET {{base_url}}/db/{{database}}
 HTTP 200
 [Asserts]
-header "Accept-Query" == "application/json"
+header "Accept-Query" == "text/plain"
 jsonpath "$.name" == "{{database}}"
 jsonpath "$.indices" count == 3
 jsonpath "$.doc_count" == 2
 jsonpath "$.documents" not exists
 
 
-# Page through full documents.
+# Read document bodies in creation order without server metadata.
 QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "limit": 1
-}
-HTTP 200
-[Captures]
-document_cursor: jsonpath "$.cursor"
-first_listed: jsonpath "$.documents[0].id"
-listed_rev: jsonpath "$.documents[0].rev"
-[Asserts]
-header "Accept-Query" == "application/json"
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-jsonpath "$.cursor" != ""
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "limit": 1,
-  "cursor": "{{document_cursor}}"
-}
+Content-Type: text/plain
+```
+.
+```
 HTTP 200
 [Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" matches /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-jsonpath "$.documents[0].id" != "{{first_listed}}"
-jsonpath "$.documents[0].doc.name" == "second"
-jsonpath "$.documents[0].rev" matches /^[0-9a-f]{32}$/
-jsonpath "$.cursor" == ""
-
-
-# Query indexed values with an opaque cursor.
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "active",
-  "value": true,
-  "limit": 1
-}
-HTTP 200
-[Captures]
-active_cursor: jsonpath "$.cursor"
-active_first: jsonpath "$.documents[0].id"
-[Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.cursor" != ""
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "active",
-  "value": true,
-  "limit": 1,
-  "cursor": "{{active_cursor}}"
-}
-HTTP 200
-[Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" != "{{active_first}}"
-jsonpath "$.cursor" == ""
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "email",
-  "value": "alice@example.com"
-}
-HTTP 200
-[Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{first_id}}"
-jsonpath "$.documents[0].doc.email" == "alice@example.com"
-jsonpath "$.documents[0].rev" == "{{listed_rev}}"
-jsonpath "$.cursor" == ""
-
-
-# Query indexed comparisons in value order and page with an equivalent numeric value.
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "score",
-  "op": "ge",
-  "value": 10,
-  "limit": 1
-}
-HTTP 200
-[Captures]
-score_cursor: jsonpath "$.cursor"
-[Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{second_id}}"
-jsonpath "$.cursor" != ""
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "score",
-  "op": "gt",
-  "value": 10,
-  "limit": 1,
-  "cursor": "{{score_cursor}}"
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_cursor"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "score",
-  "op": "ge",
-  "value": 10,
-  "limit": 1,
-  "cursor": "{{score_cursor}}"
-}
-HTTP 200
-[Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{first_id}}"
-jsonpath "$.cursor" == ""
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "score",
-  "op": "lt",
-  "value": 20
-}
-HTTP 200
-[Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{second_id}}"
-jsonpath "$.cursor" == ""
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "score",
-  "op": "le",
-  "value": 10
-}
-HTTP 200
-[Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{second_id}}"
-jsonpath "$.cursor" == ""
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "score",
-  "op": "gt",
-  "value": 10
-}
-HTTP 200
-[Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{first_id}}"
-jsonpath "$.cursor" == ""
+jsonpath "$" count == 2
+jsonpath "$[0].name" == "first"
+jsonpath "$[1].name" == "second"
+jsonpath "$[0].id" not exists
+jsonpath "$[0].rev" not exists
 
 
 # Read and replace the first document.
@@ -285,7 +137,7 @@ jsonpath "$.nested.a" == 1
 
 PUT {{base_url}}/db/{{database}}/{{first_id}}
 Content-Type: application/json
-If-Match: "{{listed_rev}}"
+If-Match: {{first_etag}}
 {
   "name": "replacement",
   "count": 1
@@ -299,27 +151,22 @@ jsonpath "$.name" == "replacement"
 jsonpath "$.count" == 1
 
 QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "email",
-  "value": "alice@example.com"
-}
+Content-Type: text/plain
+```
+select(.email == "alice@example.com")
+```
 HTTP 200
 [Asserts]
-jsonpath "$.documents" count == 0
-jsonpath "$.cursor" == ""
+jsonpath "$" count == 0
 
 QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "active",
-  "value": true
-}
+Content-Type: text/plain
+```
+select(.active == true) | .name
+```
 HTTP 200
 [Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{second_id}}"
-jsonpath "$.cursor" == ""
+body == "[\"second\"]"
 
 
 # Reject a stale write without changing the document.
@@ -361,16 +208,13 @@ jsonpath "$.active" == false
 jsonpath "$.enabled" == true
 
 QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "active",
-  "value": false
-}
+Content-Type: text/plain
+```
+select(.active == false) | .name
+```
 HTTP 200
 [Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{first_id}}"
-jsonpath "$.cursor" == ""
+body == "[\"merged\"]"
 
 PATCH {{base_url}}/db/{{database}}/{{first_id}}
 Content-Type: application/json-patch+json
@@ -407,12 +251,13 @@ If-Match: *
 HTTP 204
 
 QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{}
+Content-Type: text/plain
+```
+.
+```
 HTTP 200
 [Asserts]
-jsonpath "$.documents" count == 0
-jsonpath "$.cursor" == ""
+body == "[]"
 
 
 # Confirm database counts follow document deletion.

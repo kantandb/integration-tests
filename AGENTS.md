@@ -19,7 +19,7 @@ mise run hurl              # Run Hurl integration tests
 mise run k6                # Run all k6 correctness tests
 mise run k6-load           # Run CRUD reliability load
 mise run k6-etag           # Run concurrent conditional writes
-mise run k6-range          # Run indexed range pagination
+mise run k6-range          # Run jq range filters
 mise run k6-query          # Run concurrent QUERY and writes
 mise run k6-bulk           # Run bulk transfer correctness
 mise run k6-benchmark      # Run mixed storage benchmark

@@ -1,15 +1,12 @@
 import http from "k6/http";
 import { check, fail } from "k6";
 import { Counter } from "k6/metrics";
+import { ndjson, parseNDJSON, query } from "../query.js";
 
 const baseUrl = __ENV.BASE_URL;
 const documents = Number(__ENV.BULK_DOCS || 100);
 const payloadBytes = Number(__ENV.BULK_PAYLOAD_BYTES || 256);
 const iterations = Number(__ENV.BULK_ITERATIONS || 4);
-const idPattern =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const etagPattern = /^"[0-9a-f]{32}"$/;
-
 for (const [name, value] of Object.entries({ documents, payloadBytes, iterations })) {
     if (!Number.isInteger(value) || value < 1) {
         throw new Error(`BULK_${name.toUpperCase()} must be a positive integer`);
@@ -37,7 +34,7 @@ export const options = {
         checks: ["rate==1"],
         http_req_failed: ["rate==0"],
         "http_req_duration{operation:bulk_import}": ["p(95)<5000"],
-        "http_req_duration{operation:bulk_export}": ["p(95)<5000"],
+        "http_req_duration{operation:bulk_export,status:200}": ["p(95)<5000"],
         bulk_imports: ["count>0"],
         bulk_exports: ["count>0"],
     },
@@ -55,7 +52,7 @@ export function setup() {
     createDatabase(source, true);
 
     const body = makeBody();
-    const imported = http.post(`${baseUrl}/bulk/${source}`, body, {
+    const imported = http.post(`${baseUrl}/db/${source}`, body, {
         headers: bulkHeaders,
         tags: { operation: "bulk_seed" },
     });
@@ -67,25 +64,20 @@ export function setup() {
         fail(`source import failed: ${imported.status} ${imported.body}`);
     }
 
-    const sourceIds = listIDs(source);
-    if (sourceIds.length !== documents) {
-        fail(`source has ${sourceIds.length} documents, want ${documents}`);
-    }
+    checkCount(source, documents);
 
-    return { source, body, sourceIds };
+    return { source };
 }
 
-export default function ({ source, body, sourceIds }) {
+export default function ({ source }) {
     const suffix = `${Date.now()}-${__VU}-${__ITER}`;
     const target = `bulk-target-${suffix}`;
     const invalid = `bulk-invalid-${suffix}`;
     createDatabase(target, true);
     createDatabase(invalid, false);
 
-    const exported = http.get(`${baseUrl}/bulk/${source}`, {
-        tags: { operation: "bulk_export" },
-    });
-    const sourceDocs = parseDocs(exported);
+    const exported = exportDocs(source, "bulk_export");
+    const sourceDocs = parseNDJSON(exported);
 
     if (check(exported, {
         "source exported": (r) => r.status === 200,
@@ -97,7 +89,7 @@ export default function ({ source, body, sourceIds }) {
         exports.add(1);
     }
 
-    const imported = http.post(`${baseUrl}/bulk/${target}`, exported.body, {
+    const imported = http.post(`${baseUrl}/db/${target}`, exported.body, {
         headers: bulkHeaders,
         tags: { operation: "bulk_import" },
     });
@@ -110,40 +102,16 @@ export default function ({ source, body, sourceIds }) {
         imports.add(1);
     }
 
-    const targetIds = listIDs(target);
-    const sourceSet = new Set(sourceIds);
-    check(targetIds, {
-        "target contains every document": (ids) => ids.length === documents,
-        "import generated UUIDv7 IDs": (ids) => ids.every((id) => idPattern.test(id)),
-        "import replaced source IDs": (ids) => ids.every((id) => !sourceSet.has(id)),
-    });
+    checkCount(target, documents);
 
-    const first = targetIds.length > 0
-        ? http.get(`${baseUrl}/db/${target}/${targetIds[0]}`, {
-            tags: { operation: "imported_document_read" },
-        })
-        : null;
-    check(first, {
-        "imported document is readable": (r) => r !== null && r.status === 200,
-        "imported document has ETag": (r) => r !== null && etagPattern.test(header(r, "Etag")),
-    });
-
-    const group = 0;
-    const indexed = listIDs(target, { index: "group", value: group }, "imported_index_query");
-    check(indexed, {
-        "imported index is complete": (ids) => ids.length === groupCount(group),
-    });
-
-    const reexported = http.get(`${baseUrl}/bulk/${target}`, {
-        tags: { operation: "bulk_reexport" },
-    });
+    const reexported = exportDocs(target, "bulk_reexport");
     check(reexported, {
         "target re-exported": (r) => r.status === 200,
         "round trip preserves values": (r) =>
-            r.status === 200 && sameDocs(parseDocs(r), sourceDocs),
+            r.status === 200 && sameDocs(parseNDJSON(r), sourceDocs),
     });
 
-    const rejected = http.post(`${baseUrl}/bulk/${invalid}`, "{}\n[]\n", {
+    const rejected = http.post(`${baseUrl}/db/${invalid}`, "{}\n[]\n", {
         headers: bulkHeaders,
         tags: { operation: "bulk_invalid" },
     });
@@ -155,9 +123,7 @@ export default function ({ source, body, sourceIds }) {
         },
         "invalid import reports failure": (r) => r.json("success") === false,
     });
-    check(listIDs(invalid), {
-        "invalid import is atomic": (ids) => ids.length === 0,
-    });
+    checkCount(invalid, 0);
 
     deleteDatabase(target);
     deleteDatabase(invalid);
@@ -190,28 +156,19 @@ function deleteDatabase(name) {
     check(response, { "bulk database deleted": (r) => r.status === 204 });
 }
 
-function listIDs(database, query = {}, operation = "document_list") {
-    const ids = [];
-    let cursor = "";
+function exportDocs(database, operation) {
+    return query(baseUrl, database, ".", { operation }, ndjson);
+}
 
-    // Full records can reach the byte budget before the count limit.
-    do {
-        const response = http.request(
-            "QUERY", `${baseUrl}/db/${database}`,
-            JSON.stringify({ ...query, limit: 1000, cursor }),
-            { headers: jsonHeaders, tags: { operation } },
-        );
+function checkCount(database, count) {
+    const response = http.get(`${baseUrl}/db/${database}`, {
+        tags: { operation: "database_info" },
+    });
 
-        if (response.status !== 200) {
-            fail(`document list failed: ${response.status} ${response.body}`);
-        }
-
-        ids.push(...response.json("documents").map((record) => record.id));
-        cursor = response.json("cursor");
-    } while (cursor && ids.length <= documents);
-
-    check(cursor, { "bulk document list terminates": (value) => value === "" });
-    return ids;
+    check(response, {
+        "database info returned": (r) => r.status === 200,
+        "database count matches": (r) => r.status === 200 && r.json("doc_count") === count,
+    });
 }
 
 function makeBody() {
@@ -232,14 +189,6 @@ function payload(seed) {
     return token.repeat(Math.ceil(payloadBytes / token.length)).slice(0, payloadBytes);
 }
 
-function parseDocs(response) {
-    if (!response || response.status !== 200) {
-        return [];
-    }
-
-    return response.body.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
-}
-
 function sameDocs(actual, expected) {
     const normalize = (values) => values
         .map((value) => JSON.stringify(value))
@@ -248,10 +197,6 @@ function sameDocs(actual, expected) {
     const right = normalize(expected);
 
     return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function groupCount(group) {
-    return Math.floor((documents + 3 - group) / 4);
 }
 
 function header(response, name) {

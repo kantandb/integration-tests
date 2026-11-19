@@ -1,5 +1,6 @@
 import http from "k6/http";
 import { check, fail, sleep } from "k6";
+import { query } from "../query.js";
 
 const baseUrl = __ENV.BASE_URL;
 const idPattern =
@@ -95,17 +96,15 @@ export default function ({ database }) {
         return;
     }
 
-    const list = http.request("QUERY", `${baseUrl}/db/${database}`, '{"limit":1000}', {
-        headers: jsonHeaders,
-        tags: { name: "document_list" },
-    });
-    check(list, {
-        "documents listed": (r) => r.status === 200,
-        "list contains document": (r) => r.json("documents").some((record) =>
-            record.id === id && `"${record.rev}"` === updatedEtag &&
-            record.doc.active === false,
-        ),
-        "list returned cursor": (r) => typeof r.json("cursor") === "string",
+    const program = `select(.owner == ${__VU} and .iteration == ${__ITER})`;
+    const result = query(baseUrl, database, program, { name: "document_query" });
+    check(result, {
+        "query succeeded": (r) => r.status === 200,
+        "query found the replacement body": (r) => {
+            const docs = r.status === 200 ? r.json() : null;
+            return docs?.length === 1 && docs[0]?.owner === __VU &&
+                docs[0]?.iteration === __ITER && docs[0]?.active === false;
+        },
     });
 
     const remove = http.del(`${baseUrl}/db/${database}/${id}`, null, {

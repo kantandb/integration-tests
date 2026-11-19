@@ -1,6 +1,7 @@
 import http from "k6/http";
 import { check, fail } from "k6";
 import { Counter, Trend } from "k6/metrics";
+import { ndjson, query } from "../query.js";
 
 const baseUrl = __ENV.BASE_URL;
 const vus = Number(__ENV.BULK_BENCHMARK_VUS || 1);
@@ -46,7 +47,7 @@ export const options = {
         checks: ["rate==1"],
         http_req_failed: ["rate==0"],
         "http_req_duration{operation:bulk_import}": ["p(95)<10000"],
-        "http_req_duration{operation:bulk_export}": ["p(95)<5000"],
+        "http_req_duration{operation:bulk_export,status:200}": ["p(95)<5000"],
         bulk_imported_documents: ["count>0"],
         bulk_exported_documents: ["count>0"],
     },
@@ -78,7 +79,7 @@ export default function () {
         fail(`database creation failed: ${created.status} ${created.body}`);
     }
 
-    const imported = http.post(`${baseUrl}/bulk/${database}`, body, {
+    const imported = http.post(`${baseUrl}/db/${database}`, body, {
         headers: bulkHeaders,
         tags: { name: "bulk_import", operation: "bulk_import" },
     });
@@ -91,15 +92,16 @@ export default function () {
         importRate.add(mibPerSecond(bodyBytes, imported.timings.duration));
     }
 
-    const exported = http.get(`${baseUrl}/bulk/${database}`, {
-        tags: { name: "bulk_export", operation: "bulk_export" },
-    });
+    const exported = query(baseUrl, database, ".", {
+        name: "bulk_export", operation: "bulk_export",
+    }, ndjson);
     const exportBytes = exported.status === 200 ? exported.body.length : 0;
     const exportDocs = exported.status === 200
         ? exported.body.trim().split("\n").filter(Boolean).length
         : 0;
     if (check(exported, {
         "bulk batch exported": (r) => r.status === 200,
+        "bulk export uses NDJSON": (r) => r.headers["Content-Type"] === ndjson,
         "bulk export byte count matches": () => exportBytes === bodyBytes,
         "bulk export document count matches": () => exportDocs === documents,
     })) {

@@ -1,4 +1,4 @@
-# Create an isolated database for JSONPath queries.
+# Create an isolated database for jq queries.
 POST {{base_url}}/db
 Content-Type: application/json
 {
@@ -17,11 +17,11 @@ HTTP 201
 OPTIONS {{base_url}}/db/{{database}}-query
 HTTP 204
 [Asserts]
-header "Accept-Query" == "application/json"
+header "Accept-Query" == "text/plain"
 header "Allow" == "GET, POST, QUERY, DELETE, OPTIONS"
 
 
-# Create documents for scan and indexed queries.
+# Create documents with varied field types.
 POST {{base_url}}/db/{{database}}-query
 Content-Type: application/json
 {
@@ -33,8 +33,6 @@ Content-Type: application/json
   ]
 }
 HTTP 201
-[Captures]
-query_first_id: jsonpath "$.id"
 
 POST {{base_url}}/db/{{database}}-query
 Content-Type: application/json
@@ -50,8 +48,6 @@ Content-Type: application/json
   ]
 }
 HTTP 201
-[Captures]
-query_second_id: jsonpath "$.id"
 
 POST {{base_url}}/db/{{database}}-query
 Content-Type: application/json
@@ -70,8 +66,6 @@ Content-Type: application/json
   ]
 }
 HTTP 201
-[Captures]
-query_array_id: jsonpath "$.id"
 
 POST {{base_url}}/db/{{database}}-query
 Content-Type: application/json
@@ -83,142 +77,86 @@ Content-Type: application/json
   }
 }
 HTTP 201
-[Captures]
-query_object_id: jsonpath "$.id"
 
 
-# Scan wildcard results in document ID order.
+# Filter nested values and project the result in document order.
 QUERY {{base_url}}/db/{{database}}-query
-Content-Type: application/json; charset=utf-8
-{
-  "path": "$.products[*].price",
-  "op": "lt",
-  "value": 10
-}
+Content-Type: text/plain; charset=utf-8
+```
+.products[]?.price | numbers | select(. < 10)
+```
 HTTP 200
 [Asserts]
-header "Accept-Query" == "application/json"
+header "Accept-Query" == "text/plain"
 header "Cache-Control" == "no-store"
-jsonpath "$.documents" count == 2
-jsonpath "$.documents[0].id" == "{{query_first_id}}"
-jsonpath "$.documents[1].id" == "{{query_second_id}}"
-jsonpath "$.documents[0].rev" matches /^[0-9a-f]{32}$/
-jsonpath "$.documents[0].doc.score" == 20
-jsonpath "$.documents[0].doc.products[0].price" == 5
-jsonpath "$.documents[1].doc.products[1].price" == 8
-jsonpath "$.cursor" == ""
+header "Vary" == "Accept"
+header "Content-Type" == "application/json; charset=utf-8"
+body == "[5,8]"
 
 
-# Use index-value order and an opaque cursor.
+# Query numeric scores in document order, not index order.
 QUERY {{base_url}}/db/{{database}}-query
-Content-Type: application/json
-{
-  "path": "$.score",
-  "op": "ge",
-  "value": 10,
-  "limit": 1
-}
-HTTP 200
-[Captures]
-query_score_cursor: jsonpath "$.cursor"
-[Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{query_second_id}}"
-jsonpath "$.cursor" != ""
-jsonpath "$.cursor" != "{{query_second_id}}"
-
-QUERY {{base_url}}/db/{{database}}-query
-Content-Type: application/json
-{
-  "path": "$.other",
-  "op": "ge",
-  "value": 10,
-  "limit": 1,
-  "cursor": "{{query_score_cursor}}"
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_cursor"
-
-QUERY {{base_url}}/db/{{database}}-query
-Content-Type: application/json
-{
-  "path": "$.score",
-  "op": "gt",
-  "value": 10,
-  "limit": 1,
-  "cursor": "{{query_score_cursor}}"
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_cursor"
-
-QUERY {{base_url}}/db/{{database}}-query
-Content-Type: application/json
-{
-  "path": "$.score",
-  "op": "ge",
-  "value": 11,
-  "limit": 1,
-  "cursor": "{{query_score_cursor}}"
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_cursor"
-
-QUERY {{base_url}}/db/{{database}}-query
-Content-Type: application/json
-{
-  "index": "score",
-  "op": "ge",
-  "value": 10,
-  "cursor": "{{query_score_cursor}}"
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_cursor"
-
-QUERY {{base_url}}/db/{{database}}-query
-Content-Type: application/json
-{
-  "path": "$['score']",
-  "op": "ge",
-  "value": 10,
-  "limit": 1,
-  "cursor": "{{query_score_cursor}}"
-}
+Content-Type: text/plain
+```
+.score | numbers | select(. >= 10)
+```
 HTTP 200
 [Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{query_first_id}}"
-jsonpath "$.documents[0].doc.score" == 20
-jsonpath "$.cursor" == ""
+body == "[20,10]"
 
 
-# Distinguish array indices from numeric object members.
+# Distinguish array indexes from numeric object keys.
 QUERY {{base_url}}/db/{{database}}-query
-Content-Type: application/json
-{
-  "path": "$.items[0].sku",
-  "value": "array"
-}
+Content-Type: text/plain
+```
+.items | if type == "array" then .[0].sku elif type == "object" then .["0"].sku else empty end
+```
 HTTP 200
 [Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{query_array_id}}"
-jsonpath "$.cursor" == ""
+body == "[\"array\",\"object\"]"
 
+
+# Stream each jq output on its own line, including arrays.
 QUERY {{base_url}}/db/{{database}}-query
-Content-Type: application/json
-{
-  "path": "$.items['0'].sku",
-  "value": "object"
-}
+Content-Type: text/plain
+Accept: application/x-ndjson
+```
+select(.score == 10) | .score, [.products[].price]
+```
 HTTP 200
 [Asserts]
-jsonpath "$.documents" count == 1
-jsonpath "$.documents[0].id" == "{{query_object_id}}"
-jsonpath "$.cursor" == ""
+header "Content-Type" == "application/x-ndjson"
+header "Trailer" == "Query-Status"
+header "Query-Status" == "ok"
+body == "10\n[15,8]\n"
+
+
+# Report a runtime failure after sending the first output.
+QUERY {{base_url}}/db/{{database}}-query
+Content-Type: text/plain
+Accept: application/x-ndjson
+```
+select(.score == 20) | .score, error("failed")
+```
+HTTP 200
+[Asserts]
+header "Trailer" == "Query-Status"
+header "Query-Status" == "error"
+body == "20\n"
+
+
+# A query with no outputs still completes successfully.
+QUERY {{base_url}}/db/{{database}}-query
+Content-Type: text/plain
+Accept: application/x-ndjson
+```
+empty
+```
+HTTP 200
+[Asserts]
+header "Trailer" == "Query-Status"
+header "Query-Status" == "ok"
+body == ""
 
 
 # Clean up query state.

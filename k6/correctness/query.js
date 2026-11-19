@@ -2,28 +2,29 @@ import http from "k6/http";
 import { check, fail } from "k6";
 import { Counter } from "k6/metrics";
 import exec from "k6/execution";
+import { ndjson, parseNDJSON, query } from "../query.js";
 
 const baseUrl = __ENV.BASE_URL;
 const vus = Number(__ENV.QUERY_VUS || 5);
 const iterations = Number(__ENV.QUERY_ITERATIONS || 5);
 const seedDocs = Number(__ENV.QUERY_SEED_DOCS || 100);
-const pageSize = Number(__ENV.QUERY_PAGE_SIZE || 10);
-const operators = ["eq", "lt", "le", "gt", "ge"];
+const comparisons = { eq: "==", lt: "<", le: "<=", gt: ">", ge: ">=" };
+const operators = Object.keys(comparisons);
 
-for (const [name, value] of Object.entries({ vus, iterations, seedDocs, pageSize })) {
+for (const [name, value] of Object.entries({ vus, iterations, seedDocs })) {
     if (!Number.isInteger(value) || value < 1) {
         throw new Error(`QUERY_${name.toUpperCase()} must be a positive integer`);
     }
 }
-if (seedDocs > 1000 || pageSize > 1000) {
-    throw new Error("query seed documents and page size must be at most 1000");
+if (seedDocs > 1000) {
+    throw new Error("QUERY_SEED_DOCS must be at most 1000");
 }
 if (vus * iterations < operators.length) {
     throw new Error("QUERY_VUS * QUERY_ITERATIONS must cover every operator");
 }
 
 const completed = Object.fromEntries(
-    ["index", "scan"].flatMap((plan) =>
+    ["numeric", "nested"].flatMap((plan) =>
         operators.map((operator) => [
             `${plan}_${operator}`,
             new Counter(`query_${plan}_${operator}`),
@@ -33,15 +34,15 @@ const completed = Object.fromEntries(
 
 export const options = {
     scenarios: {
-        index: queryScenario("queryIndex"),
-        scan: queryScenario("queryScan"),
+        numeric: queryScenario("queryNumeric"),
+        nested: queryScenario("queryNested"),
         writes: queryScenario("mixedWrites"),
     },
     thresholds: {
         checks: ["rate==1"],
         http_req_failed: ["rate==0"],
-        "http_req_duration{operation:index_query}": ["p(95)<500"],
-        "http_req_duration{operation:scan_query}": ["p(95)<500"],
+        "http_req_duration{operation:numeric_query,status:200}": ["p(95)<500"],
+        "http_req_duration{operation:nested_query,status:200}": ["p(95)<500"],
         ...Object.fromEntries(
             Object.keys(completed).map((name) => [`query_${name}`, ["count>0"]]),
         ),
@@ -100,7 +101,7 @@ export function setup() {
             fail(`document seed failed: ${response.status} ${response.body}`);
         }
 
-        entries.push({ id, score, prices });
+        entries.push({ id, score, prices, seed: index });
     }
 
     return {
@@ -110,42 +111,29 @@ export function setup() {
     };
 }
 
-export function queryIndex({ database, entries, maxScore }) {
+export function queryNumeric({ database, entries, maxScore }) {
     const { operator, boundary } = queryCase(maxScore);
-    const expected = entries
-        .filter((entry) => matches(entry.score, operator, boundary))
-        .sort((left, right) => left.score - right.score || compare(left.id, right.id))
-        .map((entry) => entry.id);
-    const actual = queryAll(database, "$.score", operator, boundary, "index_query");
+    const expected = entries.filter((entry) => matches(entry.score, operator, boundary));
+    const program = `select(.score | numbers | . ${comparisons[operator]} ${boundary}) | .seed`;
+    const response = query(baseUrl, database, program, { operation: "numeric_query", operator });
 
-    check(actual, {
-        "indexed QUERY returns every ordered ID": (ids) => same(ids, expected),
-    });
-    completed[`index_${operator}`].add(1);
+    checkResult(response, response.status === 200 ? response.json() : null, expected, "numeric", operator);
 }
 
-export function queryScan({ database, entries, maxScore }) {
+export function queryNested({ database, entries, maxScore }) {
     const { operator, boundary } = queryCase(maxScore);
-    const expected = entries
-        .filter((entry) =>
-            entry.prices?.some((price) =>
-                typeof price === "number" && matches(price, operator, boundary),
-            ),
-        )
-        .sort((left, right) => compare(left.id, right.id))
-        .map((entry) => entry.id);
-    const actual = queryAll(
-        database,
-        "$.products[*].price",
-        operator,
-        boundary,
-        "scan_query",
+    const expected = entries.filter((entry) =>
+        entry.prices?.some((price) =>
+            typeof price === "number" && matches(price, operator, boundary),
+        ),
     );
+    const program = `select(any(.products[]?.price | numbers; . ${comparisons[operator]} ${boundary})) | .seed`;
+    const response = query(baseUrl, database, program, { operation: "nested_query", operator }, ndjson);
 
-    check(actual, {
-        "scan QUERY returns every ordered ID": (ids) => same(ids, expected),
+    check(response, {
+        "nested QUERY uses NDJSON": (r) => r.headers["Content-Type"] === ndjson,
     });
-    completed[`scan_${operator}`].add(1);
+    checkResult(response, parseNDJSON(response), expected, "nested", operator);
 }
 
 // Exercise index maintenance while queries read the same database.
@@ -203,50 +191,15 @@ export function mixedWrites({ database }) {
     check(remove, { "mixed document deleted": (r) => r.status === 204 });
 }
 
-function queryAll(database, path, operator, value, operation) {
-    const documents = [];
-    let cursor = "";
-    let pages = 0;
+function checkResult(response, actual, expected, kind, operator) {
+    const seeds = expected.sort((left, right) => compare(left.id, right.id)).map((entry) => entry.seed);
 
-    do {
-        const body = { path, op: operator, value, limit: pageSize };
-
-        if (cursor) {
-            body.cursor = cursor;
-        }
-
-        const response = http.request(
-            "QUERY",
-            `${baseUrl}/db/${database}`,
-            JSON.stringify(body),
-            { headers: jsonHeaders, tags: { operation, operator } },
-        );
-        const ids = response.status === 200 ? response.json("documents") : null;
-        const next = response.status === 200 ? response.json("cursor") : null;
-
-        if (!check(response, {
-            "QUERY page returned": (r) => r.status === 200,
-            "QUERY page has documents": () => Array.isArray(ids),
-            "QUERY page has cursor": () => typeof next === "string",
-        })) {
-            return documents;
-        }
-
-        check(ids, {
-            "QUERY records include bodies and revisions": (records) => records.every((record) =>
-                /^[0-9a-f]{32}$/.test(record.rev) &&
-                typeof record.doc === "object" && record.doc !== null &&
-                typeof record.doc.seed === "number",
-            ),
-        });
-        documents.push(...ids.map((record) => record.id));
-        cursor = next;
-        pages += 1;
-    } while (cursor && pages <= seedDocs + 1);
-
-    check(cursor, { "QUERY pagination terminates": (value) => value === "" });
-
-    return documents;
+    if (check(response, {
+        [`${kind} QUERY succeeded`]: (r) => r.status === 200,
+        [`${kind} QUERY returned ordered results`]: () => Array.isArray(actual) && same(actual, seeds),
+    })) {
+        completed[`${kind}_${operator}`].add(1);
+    }
 }
 
 function queryCase(maxScore) {

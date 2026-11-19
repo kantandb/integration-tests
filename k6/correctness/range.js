@@ -1,25 +1,27 @@
 import http from "k6/http";
 import { check, fail } from "k6";
 import { Counter } from "k6/metrics";
+import exec from "k6/execution";
+import { query } from "../query.js";
 
 const baseUrl = __ENV.BASE_URL;
 const vus = Number(__ENV.RANGE_VUS || 4);
 const iterations = Number(__ENV.RANGE_ITERATIONS || 4);
 const seedDocs = Number(__ENV.RANGE_SEED_DOCS || 100);
-const pageSize = Number(__ENV.RANGE_PAGE_SIZE || 10);
-const operators = ["lt", "le", "gt", "ge"];
+const operators = { lt: "<", le: "<=", gt: ">", ge: ">=" };
+const cases = Object.keys(operators);
 
-for (const [name, value] of Object.entries({ vus, iterations, seedDocs, pageSize })) {
+for (const [name, value] of Object.entries({ vus, iterations, seedDocs })) {
     if (!Number.isInteger(value) || value < 1) {
         throw new Error(`RANGE_${name.toUpperCase()} must be a positive integer`);
     }
 }
-if (seedDocs > 1000 || pageSize > 1000) {
-    throw new Error("range seed documents and page size must be at most 1000");
+if (seedDocs > 10000 || vus * iterations < cases.length) {
+    throw new Error("RANGE_SEED_DOCS must be at most 10000 and iterations must cover all operators");
 }
 
 const completed = Object.fromEntries(
-    operators.map((operator) => [operator, new Counter(`range_${operator}`)]),
+    cases.map((operator) => [operator, new Counter(`range_${operator}`)]),
 );
 
 export const options = {
@@ -34,7 +36,7 @@ export const options = {
     thresholds: {
         checks: ["rate==1"],
         http_req_failed: ["rate==0"],
-        "http_req_duration{operation:range_query}": ["p(95)<500"],
+        "http_req_duration{operation:range_query,status:200}": ["p(95)<500"],
         range_lt: ["count>0"],
         range_le: ["count>0"],
         range_gt: ["count>0"],
@@ -78,55 +80,33 @@ export function setup() {
             fail(`document seed failed: ${response.status} ${response.body}`);
         }
 
-        entries.push({ id, score });
+        entries.push({ id, score, seed: index });
     }
 
-    entries.sort((left, right) => left.score - right.score || compare(left.id, right.id));
+    entries.sort((left, right) => compare(left.id, right.id));
 
-    return { database, entries, maxScore: entries[entries.length - 1].score };
+    return { database, entries, maxScore: Math.ceil(seedDocs / 2) };
 }
 
 export default function ({ database, entries, maxScore }) {
-    const operator = operators[(__VU + __ITER - 1) % operators.length];
-    const boundary = 1 + ((__VU + __ITER) % maxScore);
+    const iteration = exec.scenario.iterationInTest;
+    const operator = cases[iteration % cases.length];
+    const boundary = 1 + (iteration % maxScore);
     const expected = entries.filter((entry) => matches(entry.score, operator, boundary));
-    const actual = [];
-    let cursor = "";
-    let pages = 0;
+    const program = `select(.score ${operators[operator]} ${boundary})`;
+    const response = query(baseUrl, database, program, { operation: "range_query", operator });
+    const actual = response.status === 200 ? response.json() : null;
 
-    do {
-        const response = http.request(
-            "QUERY",
-            `${baseUrl}/db/${database}`,
-            JSON.stringify({ index: "score", op: operator, value: boundary, limit: pageSize, cursor }),
-            { headers: jsonHeaders, tags: { operation: "range_query", operator } },
-        );
-        const documents = response.status === 200 ? response.json("documents") : null;
-        const nextCursor = response.status === 200 ? response.json("cursor") : null;
+    if (!check(response, {
+        "range query succeeded": (r) => r.status === 200,
+        "range query returns bodies in document order": () =>
+            Array.isArray(actual) && actual.length === expected.length &&
+            actual.every((doc, index) => doc?.score === expected[index].score &&
+                doc.seed === expected[index].seed && !("id" in doc) && !("rev" in doc)),
+    })) {
+        return;
+    }
 
-        if (!check(response, {
-            "range page returned": (r) => r.status === 200,
-            "range page has documents": () => Array.isArray(documents),
-            "range page has cursor": () => typeof nextCursor === "string",
-        })) {
-            return;
-        }
-
-        check(documents, {
-            "range records include bodies and revisions": (records) => records.every((record) =>
-                /^[0-9a-f]{32}$/.test(record.rev) &&
-                entries.some((entry) => entry.id === record.id && entry.score === record.doc.score),
-            ),
-        });
-        actual.push(...documents.map((record) => record.id));
-        cursor = nextCursor;
-        pages += 1;
-    } while (cursor && pages <= Math.ceil(expected.length / pageSize));
-
-    check(actual, {
-        "range query terminates": () => cursor === "",
-        "range query returns every ordered ID": () => same(actual, expected.map((entry) => entry.id)),
-    });
     completed[operator].add(1);
 }
 
@@ -149,9 +129,4 @@ function matches(score, operator, boundary) {
         gt: score > boundary,
         ge: score >= boundary,
     }[operator];
-}
-
-function same(actual, expected) {
-    return actual.length === expected.length &&
-        actual.every((value, index) => value === expected[index]);
 }

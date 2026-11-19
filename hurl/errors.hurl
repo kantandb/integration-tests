@@ -29,250 +29,124 @@ HTTP 400
 jsonpath "$.error.code" == "invalid_request"
 
 
-# Query validation distinguishes malformed and missing indices.
+# Create a document so jq runtime errors can be tested.
 POST {{base_url}}/db
 Content-Type: application/json
 {
-  "name": "{{database}}",
-  "indices": [
-    {
-      "name": "active",
-      "path": "/active"
-    }
-  ]
+  "name": "{{database}}"
 }
 HTTP 201
 
-QUERY {{base_url}}/db/{{database}}
+POST {{base_url}}/db/{{database}}
 Content-Type: application/json
-{
-  "index": "active"
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_query"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "op": "eq"
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_query"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "active",
-  "op": "bad",
-  "value": true
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_query"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "active",
-  "op": "lt",
-  "value": true
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_query"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "active",
-  "value": {}
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_query"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-```
-{"index":"active","index":"active","value":true}
-```
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_query"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "unknown": "true"
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_query"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "missing",
-  "value": true
-}
-HTTP 404
-[Asserts]
-jsonpath "$.error.code" == "index_not_found"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "active",
-  "value": true,
-  "cursor": "bad"
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_cursor"
+{}
+HTTP 201
 
 
-# GET no longer accepts document query parameters.
+# Reject URI parameters on database reads and queries.
 GET {{base_url}}/db/{{database}}?limit=1
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 jsonpath "$.error.message" == "URI query parameters are not supported"
 
-
-# QUERY rejects invalid request contracts.
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "index": "active",
-  "path": "$.active",
-  "value": true
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_query"
-
 QUERY {{base_url}}/db/{{database}}?limit=1
-Content-Type: application/json
-{
-  "path": "$.active",
-  "value": true
-}
+Content-Type: text/plain
+```
+.
+```
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 jsonpath "$.error.message" == "URI query parameters are not supported"
 
+
+# Reject unsupported request and response formats.
 QUERY {{base_url}}/db/{{database}}
 HTTP 415
 [Asserts]
 jsonpath "$.error.code" == "unsupported_media_type"
-jsonpath "$.error.message" == "Content-Type must be application/json"
+jsonpath "$.error.message" == "Content-Type must be text/plain with UTF-8 encoding"
+
+QUERY {{base_url}}/db/{{database}}
+Content-Type: application/json
+{}
+HTTP 415
+[Asserts]
+jsonpath "$.error.code" == "unsupported_media_type"
+
+QUERY {{base_url}}/db/{{database}}
+Content-Type: text/plain; charset=iso-8859-1
+```
+.
+```
+HTTP 415
+[Asserts]
+jsonpath "$.error.code" == "unsupported_media_type"
 
 QUERY {{base_url}}/db/{{database}}
 Content-Type: text/plain
-{
-  "path": "$.active",
-  "value": true
-}
-HTTP 415
-[Asserts]
-jsonpath "$.error.code" == "unsupported_media_type"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "path": "$.active"
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_query"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
+Accept: text/html
 ```
-{"path":"$.active","value":true
+.
+```
+HTTP 406
+[Asserts]
+jsonpath "$.error.code" == "not_acceptable"
+
+
+# Distinguish invalid programs from runtime failures.
+QUERY {{base_url}}/db/{{database}}
+Content-Type: text/plain
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+QUERY {{base_url}}/db/{{database}}
+Content-Type: text/plain
+```
+. |
 ```
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 
 QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "path": "$.active",
-  "value": true,
-  "extra": true
-}
+Content-Type: text/plain
+```
+unknown_function
+```
 HTTP 400
 [Asserts]
 jsonpath "$.error.code" == "invalid_query"
 
 QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "path": "$.active",
-  "value": {}
-}
+Content-Type: text/plain
+```
+error("failed")
+```
 HTTP 400
 [Asserts]
-jsonpath "$.error.code" == "invalid_query"
+jsonpath "$.error.code" == "query_runtime"
 
 QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "path": "$.active",
-  "op": "gt",
-  "value": true
-}
+Content-Type: text/plain
+Accept: application/x-ndjson
+```
+error("failed")
+```
 HTTP 400
 [Asserts]
-jsonpath "$.error.code" == "invalid_query"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "path": "active",
-  "value": true
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_query"
-jsonpath "$.error.message" == "Path is invalid"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "path": "$.active",
-  "value": true,
-  "limit": 0
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_query"
-
-QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "path": "$.active",
-  "value": true,
-  "cursor": "bad"
-}
-HTTP 400
-[Asserts]
-jsonpath "$.error.code" == "invalid_cursor"
-jsonpath "$.error.message" == "Cursor is invalid"
+jsonpath "$.error.code" == "query_runtime"
 
 DELETE {{base_url}}/db/{{database}}
 HTTP 204
 
 QUERY {{base_url}}/db/{{database}}
-Content-Type: application/json
-{
-  "path": "$.active",
-  "value": true
-}
+Content-Type: text/plain
+```
+.
+```
 HTTP 404
 [Asserts]
 jsonpath "$.error.code" == "database_not_found"
