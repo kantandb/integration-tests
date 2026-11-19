@@ -26,3 +26,12 @@ round,side,suite,exit,checks_failed,http_failed,requests,iterations,dropped,busy
 3,current,k6-benchmark,0,0,0,31622,17645,0,1574,2401,1201,0
 3,current,k6-bulk-benchmark,0,0,0,40,10,0,0,,,0
 3,current,matched,0,0,0,242,227,0,0,,,0
+1,65c5f71,k6-benchmark,0,0,0,31610,17647,0,1560,2401,1201,0
+1,65c5f71,k6-bulk-benchmark,0,0,0,40,10,0,0,,,0
+1,65c5f71,matched,0,0,0,241,226,0,0,,,0
+2,65c5f71,k6-benchmark,0,0,0,31596,17645,0,1548,2401,1201,0
+2,65c5f71,k6-bulk-benchmark,0,0,0,40,10,0,0,,,0
+2,65c5f71,matched,0,0,0,242,227,0,0,,,0
+3,65c5f71,k6-benchmark,0,0,0,31565,17646,0,1517,2400,1201,0
+3,65c5f71,k6-bulk-benchmark,0,0,0,40,10,0,0,,,0
+3,65c5f71,matched,0,0,0,243,228,0,0,,,0

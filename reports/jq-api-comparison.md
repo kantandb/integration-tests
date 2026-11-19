@@ -1,16 +1,34 @@
 # jq API benchmark comparison
 
-This report compares `d985455` (pre-jq), `360aade` (first jq release in this comparison), and `9a22cf9` (buffered NDJSON and faster JSON decoding). The pre-jq runs used tests from `3215057`. Both jq revisions used the benchmark scripts from `f3392c3` and the same matched query script.
+This report compares four revisions: `d985455` (pre-jq), `360aade` (first jq revision), `9a22cf9` (buffered NDJSON and faster decoding), and `65c5f71` (indexed jq). The pre-jq runs used tests from `3215057`. All jq revisions used the benchmark scripts from `f3392c3` and the same matched query script.
 
 ## Method
 
-All three revisions ran on the same Apple M2 Pro with macOS 15.7.9, Go 1.26.11, and k6 2.2.0. The original comparison alternated the first two revisions. The follow-up ran only `9a22cf9` and reused both baselines. Each suite ran three times per revision, one at a time, with fresh storage. Changes across sessions can include machine load.
+All revisions ran on the same Apple M2 Pro with macOS 15.7.9, Go 1.26.11, and k6 2.2.0. The original comparison alternated the first two revisions. Each follow-up ran only the latest revision and reused the previous results. Each suite ran three times per revision, one at a time, with fresh storage. Changes across sessions can include machine load.
 
 - Native mixed: 10,000 seed documents with 1 KiB payloads, two minutes at 147 scheduled operations per second. Query requests targeted at most 100 results. The old API returned envelopes and cursors. The new API streamed jq output and retried `429 query_busy`.
 - Bulk: ten 1,000-document batches per run, one client. All revisions imported and exported 10,637,900 bytes per run.
 - Matched queries: JSON responses with the same 100 document bodies. Filters selected 100 of 10,000 documents. Listing returned an entire 100-document database. Each case ran alone at five queries per second for 15 seconds with one client. The old response still included IDs and revisions. The new response did not.
 
 The tables show the median of the three run medians or p95 values. The p95 is the latency at or below which 95% of samples fall. Parentheses show the lowest and highest p95 across the three runs.
+
+## Follow-up: secondary indexes for jq
+
+`65c5f71` reduced p95 for the matched equality filter by 94%, from 57.68 to 3.20 ms. The query now uses the `/category` index. It beat the pre-jq p95 of 8.62 ms overall, but one of the three runs was slower than that baseline.
+
+| Operation | `9a22cf9` median / p95 | `65c5f71` median / p95 |
+|---|---:|---:|
+| Indexed equality filter | 55.64 / 57.68 ms | 2.83 / 3.20 ms |
+| Matched nested equality filter | 72.63 / 75.39 ms | 72.32 / 75.14 ms |
+| Matched list | 1.69 / 2.07 ms | 1.58 / 2.02 ms |
+| Bulk export | 8.16 / 14.30 ms | 8.09 / 12.33 ms |
+| Bulk import | 30.61 / 43.33 ms | 30.83 / 43.47 ms |
+| Mixed range request | 2.13 / 14.11 ms | 3.10 / 16.26 ms |
+| Mixed client iteration | 0.30 / 21.23 ms | 0.38 / 21.81 ms |
+
+Indexed equality p95 ranged from 3.06 to 12.84 ms across the new runs, versus 53.93 to 67.66 ms on `9a22cf9`. Listing, nested equality, and bulk throughput changed little. Median export throughput was 130.14 MiB/s, still 60% below the pre-jq baseline.
+
+Mixed throughput held at about 147 iterations per second. Median `query_busy` retries rose from 1,492 to 1,548, within the previous run range. The mixed range query uses `inputs` and still scans documents. Its p95 rose 15%, with overlapping run ranges. All nine runs passed without unexpected HTTP statuses, failed response checks, or dropped iterations.
 
 ## Follow-up: buffered NDJSON and faster JSON decoding
 
@@ -64,4 +82,4 @@ Both versions completed about 147 iterations per second without drops in the mix
 
 No run recorded a failed HTTP request under its k6 expected-status rules, and all response checks passed. One old matched run dropped 13 of roughly 75 nested queries when its single client fell behind. It failed the drop threshold. The table includes the requests it completed. No other run dropped iterations.
 
-[Per-run measurements](jq-api-comparison/latency-throughput.csv), [run counts](jq-api-comparison/runs.csv), and [matched query workload](jq-api-comparison/matched.js). The CSV labels `old`, `new`, and `current` refer to `d985455`, `360aade`, and `9a22cf9`, respectively.
+[Per-run measurements](jq-api-comparison/latency-throughput.csv), [run counts](jq-api-comparison/runs.csv), and [matched query workload](jq-api-comparison/matched.js). The CSV labels `old`, `new`, and `current` refer to `d985455`, `360aade`, and `9a22cf9`, respectively. The latest rows use `65c5f71`.
