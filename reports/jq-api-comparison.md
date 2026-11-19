@@ -1,20 +1,38 @@
 # jq API benchmark comparison
 
-Server `d985455` (tests `3215057`) versus server `360aade` (tests `f3392c3`).
-
-The new API ran the matched nested filter faster. It ran the formerly indexed filter much slower and reduced bulk export throughput. Indexed writes and bulk imports changed little.
+This report compares `d985455` (pre-jq), `360aade` (first jq release in this comparison), and `9a22cf9` (buffered NDJSON and faster JSON decoding). The pre-jq runs used tests from `3215057`. Both jq revisions used the benchmark scripts from `f3392c3` and the same matched query script.
 
 ## Method
 
-Both versions ran on the same Apple M2 Pro with macOS 15.7.9, Go 1.26.11, and k6 2.2.0. Each suite ran three times per version, in old/new, new/old, then old/new order. The suites ran one at a time, each with fresh storage.
+All three revisions ran on the same Apple M2 Pro with macOS 15.7.9, Go 1.26.11, and k6 2.2.0. The original comparison alternated the first two revisions. The follow-up ran only `9a22cf9` and reused both baselines. Each suite ran three times per revision, one at a time, with fresh storage. Changes across sessions can include machine load.
 
 - Native mixed: 10,000 seed documents with 1 KiB payloads, two minutes at 147 scheduled operations per second. Query requests targeted at most 100 results. The old API returned envelopes and cursors. The new API streamed jq output and retried `429 query_busy`.
-- Bulk: ten 1,000-document batches per run, one client. Both versions imported and exported 10,637,900 bytes per run.
+- Bulk: ten 1,000-document batches per run, one client. All revisions imported and exported 10,637,900 bytes per run.
 - Matched queries: JSON responses with the same 100 document bodies. Filters selected 100 of 10,000 documents. Listing returned an entire 100-document database. Each case ran alone at five queries per second for 15 seconds with one client. The old response still included IDs and revisions. The new response did not.
 
 The tables show the median of the three run medians or p95 values. The p95 is the latency at or below which 95% of samples fall. Parentheses show the lowest and highest p95 across the three runs.
 
-## Matched queries and bulk transfers
+## Follow-up: buffered NDJSON and faster JSON decoding
+
+`9a22cf9` more than doubled bulk export throughput and nearly halved latency for the formerly indexed filter compared with `360aade`. Both still trail the pre-jq baseline. The matched nested filter ran faster than both baselines.
+
+Each latency cell shows the median and p95 in milliseconds. The CSV records individual runs and sample counts.
+
+| Operation | `d985455` median / p95 | `360aade` median / p95 | `9a22cf9` median / p95 | p95 change vs. `360aade` |
+|---|---:|---:|---:|---:|
+| Matched list | 6.48 / 8.83 | 4.90 / 6.57 | 1.69 / 2.07 | −68% |
+| Formerly indexed equality filter | 6.86 / 8.62 | 110.05 / 114.68 | 55.64 / 57.68 | −50% |
+| Matched nested equality filter | 172.98 / 178.87 | 125.56 / 127.95 | 72.63 / 75.39 | −41% |
+| Bulk export | 3.08 / 14.66 | 17.70 / 23.09 | 8.16 / 14.30 | −38% |
+| Bulk import | 35.21 / 46.54 | 33.34 / 45.73 | 30.61 / 43.33 | −5% |
+| Mixed range request | 10.36 / 14.40 | 6.92 / 31.43 | 2.13 / 14.11 | −55% |
+| Mixed client iteration | 0.94 / 13.94 | 0.67 / 26.95 | 0.30 / 21.23 | −21% |
+
+Median export throughput rose from 57.34 to 129.31 MiB/s (+125%). It remained 61% below the pre-jq value of 329.20 MiB/s. Import throughput rose from 30.43 to 33.15 MiB/s (+9%). The benchmark measures both upstream changes together. It does not separate the effects of buffering and decoding.
+
+The mixed workload still completed about 147 iterations per second. The median number of `query_busy` retries fell from 1,818 to 1,492 (−18%). Indexed writes changed little. Point reads looked faster, but their run ranges overlap. All nine follow-up runs passed without failed response checks, unexpected HTTP statuses, or dropped iterations.
+
+## Original comparison: matched queries and bulk transfers
 
 | Operation | Old median | New median | Old p95 (range) | New p95 (range) |
 |---|---:|---:|---:|---:|
@@ -26,9 +44,9 @@ The tables show the median of the three run medians or p95 values. The p95 is th
 
 The formerly indexed filter took 16× as long at the median. jq scans the documents instead of using the index. The nested filter, which already required a scan, improved 28% at p95. Listing improved 26% at p95, but the run ranges overlap.
 
-Median bulk export throughput fell 83%, from 329.20 to 57.34 MiB/s. The new code flushes each output line. The benchmark did not isolate the cost of flushing from the cost of jq processing. Bulk import throughput was close, at 28.81 versus 30.43 MiB/s.
+Median bulk export throughput fell 83%, from 329.20 to 57.34 MiB/s. The first jq revision flushed each output line. The benchmark did not isolate the cost of flushing from the cost of jq processing. Bulk import throughput was close, at 28.81 versus 30.43 MiB/s.
 
-## Native mixed workload
+## Original comparison: native mixed workload
 
 | Operation | Old median (ms) | New median (ms) | Old p95 (range), ms | New p95 (range), ms |
 |---|---:|---:|---:|---:|
@@ -46,4 +64,4 @@ Both versions completed about 147 iterations per second without drops in the mix
 
 No run recorded a failed HTTP request under its k6 expected-status rules, and all response checks passed. One old matched run dropped 13 of roughly 75 nested queries when its single client fell behind. It failed the drop threshold. The table includes the requests it completed. No other run dropped iterations.
 
-[Per-run measurements](jq-api-comparison/latency-throughput.csv), [run counts](jq-api-comparison/runs.csv), and [matched query workload](jq-api-comparison/matched.js).
+[Per-run measurements](jq-api-comparison/latency-throughput.csv), [run counts](jq-api-comparison/runs.csv), and [matched query workload](jq-api-comparison/matched.js). The CSV labels `old`, `new`, and `current` refer to `d985455`, `360aade`, and `9a22cf9`, respectively.
