@@ -76,8 +76,8 @@ mise run k6-benchmark
 `BENCHMARK_RESULT_LIMIT` caps the number of values each query returns.
 `BENCHMARK_SETUP_TIMEOUT` allows longer seed runs.
 
-The server runs one query at a time. k6 counts `429 query_busy` responses
-separately and retries them for up to five seconds. Hurl checks stream trailers
+For older server revisions, k6 counts `429 query_busy` responses separately
+and retries them for up to five seconds. Hurl checks stream trailers
 because k6 does not expose them.
 
 The bulk benchmark measures import and export latency and MiB/s using fresh
