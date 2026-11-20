@@ -7,7 +7,7 @@
 - Hurl integration tests live in `hurl/*.hurl`.
 - k6 tests live in `k6/correctness`, `k6/reliability`, and `k6/performance`.
 - Both runners build `server-go/kantan`, start it with a temporary key and storage, and remove all temporary state.
-- Executable reliability tests live in `reliability/api.py` and use the Python 3 standard library.
+- Executable reliability tests live in `k6/reliability/api.js`; the k6 runner restarts the server between phases.
 - `hurl/run.sh` supplies `base_url` and a unique `database`; `k6/run.sh` supplies `BASE_URL`.
 
 ## Commands

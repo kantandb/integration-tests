@@ -42,7 +42,7 @@ run = "./k6/run.sh k6/correctness/pages.js"
 depends = ["k6-etag", "k6-range", "k6-query", "k6-bulk", "k6-api", "k6-pages"]
 
 [tasks.reliability]
-run = "python3 reliability/api.py"
+run = "./k6/run.sh k6/reliability/api.js limits batch timeout bulk query seed resumed updated"
 
 [tasks.check]
 depends = ["hurlfmt-check", "hurl"]

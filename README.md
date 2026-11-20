@@ -102,11 +102,15 @@ mise run k6-bulk-benchmark
 
 ## Executable reliability tests
 
-Run `mise run reliability` with Python 3. The tests use only its standard library.
-Each test starts a server with a temporary encryption key and storage directory.
-They test restart durability, cursor continuation after restart, overlapping
-queries, cancellation, timeout recovery, and byte, count, and batch limits.
+Run `mise run reliability` with the existing k6 runner. No extra runtime or extension is required.
+The runner restarts the server between phases with the same temporary key and storage.
+Tests cover restart durability, cursor continuation, overlapping queries and imports,
+client cancellation, timeout recovery, and byte, count, and batch limits.
 Small server limits keep boundary tests fast. No persistent state remains.
+
+Stock k6 cannot hold an incomplete upload open. Stalled-body timeout tests remain
+in `server-go/bulk_http_test.go`. Hurl checks stream trailers.
+When `K6_SUMMARY_EXPORT` is set, each phase writes a separate `NAME-PHASE.json` summary.
 
 Set `K6_SUMMARY_EXPORT=summary.json` for machine-readable k6 results. Keep all
 settings fixed when comparing revisions and run each revision several times.

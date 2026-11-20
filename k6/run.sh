@@ -1,12 +1,16 @@
 #!/bin/sh
 set -eu
 
-if [ "$#" -ne 1 ]; then
-    printf 'Usage: %s <test.js>\n' "$0" >&2
+if [ "$#" -lt 1 ]; then
+    printf 'Usage: %s <test.js> [phase ...]\n' "$0" >&2
     exit 2
 fi
 
 script=$1
+shift
+if [ "$#" -eq 0 ]; then
+    set -- default
+fi
 
 (cd server-go && mise run build)
 
@@ -21,15 +25,20 @@ key_file="$data_dir/kantan.key"
 openssl rand -base64 32 >"$key_file"
 chmod 600 "$key_file"
 
-./server-go/kantan -addr "$addr" -data "$data_dir/db" -key-file "$key_file" \
-    -bulk-concurrency "$bulk_concurrency" >"$log_file" 2>&1 &
-server_pid=$!
+server_pid=
+
+stop_server() {
+    if [ -n "$server_pid" ]; then
+        kill "$server_pid" 2>/dev/null || true
+        wait "$server_pid" 2>/dev/null || true
+        server_pid=
+    fi
+}
 
 cleanup() {
     status=$?
     trap - EXIT
-    kill "$server_pid" 2>/dev/null || true
-    wait "$server_pid" 2>/dev/null || true
+    stop_server
 
     if [ "$status" -ne 0 ]; then
         printf '\nServer log:\n' >&2
@@ -42,13 +51,36 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-# Wait until the server accepts requests.
-hurl --test --retry 30 --retry-interval 100ms \
-    --variable "base_url=$base_url" hurl/health.hurl
+# Restart between phases, preserving the key and storage for durability checks.
+for phase in "$@"; do
+    case "$phase" in
+        limits) flags="-max-body-bytes 256 -bulk-max-bytes 512 -bulk-max-documents 3 -bulk-max-batch-bytes 4096" ;;
+        batch) flags="-bulk-max-batch-bytes 1" ;;
+        timeout) flags="-bulk-timeout 1ns" ;;
+        bulk) flags="-bulk-concurrency 1" ;;
+        *) flags="" ;;
+    esac
 
-if [ -n "${K6_SUMMARY_EXPORT:-}" ]; then
-    k6 run --summary-export "$K6_SUMMARY_EXPORT" \
-        --env "BASE_URL=$base_url" "$script"
-else
-    k6 run --env "BASE_URL=$base_url" "$script"
-fi
+    printf '\nPhase: %s\n' "$phase" >>"$log_file"
+    # Flags contain only the fixed profiles above.
+    ./server-go/kantan -addr "$addr" -data "$data_dir/db" -key-file "$key_file" \
+        -bulk-concurrency "$bulk_concurrency" $flags >>"$log_file" 2>&1 &
+    server_pid=$!
+
+    hurl --test --retry 30 --retry-interval 100ms \
+        --variable "base_url=$base_url" hurl/health.hurl
+
+    if [ -n "${K6_SUMMARY_EXPORT:-}" ]; then
+        summary=$K6_SUMMARY_EXPORT
+        if [ "$phase" != default ]; then
+            summary="${summary%.json}-$phase.json"
+        fi
+        k6 run --summary-export "$summary" --env "BASE_URL=$base_url" \
+            --env "TEST_RUN=$$" --env "TEST_PHASE=$phase" "$script"
+    else
+        k6 run --env "BASE_URL=$base_url" \
+            --env "TEST_RUN=$$" --env "TEST_PHASE=$phase" "$script"
+    fi
+
+    stop_server
+done
