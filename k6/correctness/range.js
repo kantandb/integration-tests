@@ -36,7 +36,6 @@ export const options = {
     thresholds: {
         checks: ["rate==1"],
         http_req_failed: ["rate==0"],
-        "http_req_duration{operation:range_query,status:200}": ["p(95)<500"],
         range_lt: ["count>0"],
         range_le: ["count>0"],
         range_gt: ["count>0"],

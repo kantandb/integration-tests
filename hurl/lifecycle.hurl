@@ -27,10 +27,6 @@ Content-Type: application/json; charset=utf-8
     {
       "name": "active",
       "path": "/active"
-    },
-    {
-      "name": "score",
-      "path": "/score"
     }
   ]
 }
@@ -38,13 +34,11 @@ HTTP 201
 [Asserts]
 header "Location" == "/db/{{database}}"
 jsonpath "$.name" == "{{database}}"
-jsonpath "$.indices" count == 3
+jsonpath "$.indices" count == 2
 jsonpath "$.indices[0].name" == "email"
 jsonpath "$.indices[0].path" == "/email"
 jsonpath "$.indices[1].name" == "active"
 jsonpath "$.indices[1].path" == "/active"
-jsonpath "$.indices[2].name" == "score"
-jsonpath "$.indices[2].path" == "/score"
 
 
 # Create another database to force a second page.
@@ -132,7 +126,7 @@ HTTP 200
 [Asserts]
 header "Accept-Query" == "text/plain"
 jsonpath "$.name" == "{{database}}"
-jsonpath "$.indices" count == 3
+jsonpath "$.indices" count == 2
 jsonpath "$.doc_count" == 2
 jsonpath "$.documents" not exists
 
@@ -285,6 +279,16 @@ DELETE {{base_url}}/db/{{database}}/{{second_id}}
 If-Match: *
 HTTP 204
 
+GET {{base_url}}/db/{{database}}/{{first_id}}
+HTTP 404
+[Asserts]
+jsonpath "$.error.code" == "document_not_found"
+
+GET {{base_url}}/db/{{database}}/{{second_id}}
+HTTP 404
+[Asserts]
+jsonpath "$.error.code" == "document_not_found"
+
 QUERY {{base_url}}/db/{{database}}
 Content-Type: text/plain
 ```
@@ -300,7 +304,7 @@ GET {{base_url}}/db/{{database}}
 HTTP 200
 [Asserts]
 jsonpath "$.name" == "{{database}}"
-jsonpath "$.indices" count == 3
+jsonpath "$.indices" count == 2
 jsonpath "$.doc_count" == 0
 
 

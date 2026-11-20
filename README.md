@@ -58,7 +58,7 @@ stores one JSON value per line. Configure it with `QUERY_VUS`, `QUERY_ITERATIONS
 
 The bulk correctness test checks that an NDJSON export and import preserves
 values and counts while assigning new IDs and revisions.
-It also checks that a rejected batch adds no documents.
+Indexed reads verify that imports build index entries.
 Configure it with `BULK_DOCS`, `BULK_PAYLOAD_BYTES`, `BULK_ITERATIONS`, and
 `BULK_MAX_DURATION`.
 
@@ -79,9 +79,9 @@ mise run k6-benchmark
 `BENCHMARK_RESULT_LIMIT` caps the number of values each query returns.
 `BENCHMARK_SETUP_TIMEOUT` allows longer seed runs.
 
-For older server revisions, k6 counts `429 query_busy` responses separately
-and retries them for up to five seconds. Hurl checks stream trailers
-because k6 does not expose them.
+Benchmarks use header-based query limits and measure latency and throughput.
+Correctness suites require every check to pass, without latency thresholds.
+Hurl checks stream trailers because k6 does not expose them.
 
 The bulk benchmark measures import and export latency and MiB/s using fresh
 indexed databases. Configure it with `BULK_BENCHMARK_VUS`,

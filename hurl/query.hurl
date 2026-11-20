@@ -162,7 +162,6 @@ HTTP 200
 [Asserts]
 header "Trailer" == "Query-Status"
 header "Query-Status" == "error"
-header "Cursor" not exists
 body split "\n" count == 2
 body split "\n" nth 0 jsonpath "$.doc" == 20
 

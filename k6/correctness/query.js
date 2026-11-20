@@ -41,8 +41,6 @@ export const options = {
     thresholds: {
         checks: ["rate==1"],
         http_req_failed: ["rate==0"],
-        "http_req_duration{operation:numeric_query,status:200}": ["p(95)<500"],
-        "http_req_duration{operation:nested_query,status:200}": ["p(95)<500"],
         ...Object.fromEntries(
             Object.keys(completed).map((name) => [`query_${name}`, ["count>0"]]),
         ),
@@ -114,7 +112,7 @@ export function setup() {
 export function queryNumeric({ database, entries, maxScore }) {
     const { operator, boundary } = queryCase(maxScore);
     const expected = entries.filter((entry) => matches(entry.score, operator, boundary));
-    const program = `select(.score | numbers | . ${comparisons[operator]} ${boundary}) | .seed`;
+    const program = `select(.owner == null and (.score | numbers | . ${comparisons[operator]} ${boundary})) | .seed`;
     const response = query(baseUrl, database, program, { operation: "numeric_query", operator });
 
     checkResult(response, response.status === 200 ? response.json() : null, expected, "numeric", operator);
@@ -140,7 +138,7 @@ export function queryNested({ database, entries, maxScore }) {
 export function mixedWrites({ database }) {
     const create = http.post(
         `${baseUrl}/db/${database}`,
-        JSON.stringify({ score: "transient", owner: __VU, revision: 0 }),
+        JSON.stringify({ score: -2 * __VU, owner: __VU, revision: 0 }),
         { headers: jsonHeaders, tags: { operation: "mixed_create" } },
     );
     const id = create.status === 201 ? create.json("id") : "";
@@ -150,9 +148,11 @@ export function mixedWrites({ database }) {
         return;
     }
 
+    checkIndex(database, -2 * __VU, id, createdEtag);
+
     const replace = http.put(
         `${baseUrl}/db/${database}/${id}`,
-        JSON.stringify({ score: "updated", owner: __VU, revision: 1 }),
+        JSON.stringify({ score: -2 * __VU - 1, owner: __VU, revision: 1 }),
         {
             headers: { ...jsonHeaders, "If-Match": createdEtag },
             tags: { operation: "mixed_replace" },
@@ -164,9 +164,12 @@ export function mixedWrites({ database }) {
         return;
     }
 
+    checkIndex(database, -2 * __VU);
+    checkIndex(database, -2 * __VU - 1, id, replacedEtag);
+
     const patch = http.patch(
         `${baseUrl}/db/${database}/${id}`,
-        JSON.stringify({ revision: 2 }),
+        JSON.stringify({ score: -2 * __VU, revision: 2 }),
         {
             headers: {
                 "Content-Type": "application/merge-patch+json",
@@ -184,11 +187,24 @@ export function mixedWrites({ database }) {
         return;
     }
 
+    checkIndex(database, -2 * __VU - 1);
+    checkIndex(database, -2 * __VU, id, patchedEtag);
+
     const remove = http.del(`${baseUrl}/db/${database}/${id}`, null, {
         headers: { "If-Match": patchedEtag },
         tags: { operation: "mixed_delete" },
     });
     check(remove, { "mixed document deleted": (r) => r.status === 204 });
+    checkIndex(database, -2 * __VU);
+}
+
+function checkIndex(database, score, id, rev) {
+    const response = query(baseUrl, database, `select(.score == ${score})`, { operation: "mixed_index" });
+    check(response, {
+        "write updates index membership": (r) => r.status === 200 &&
+            (id ? r.json().length === 1 && r.json()[0].id === id && r.json()[0].rev === rev &&
+                r.json()[0].doc.score === score : r.json().length === 0),
+    });
 }
 
 function checkResult(response, actual, expected, kind, operator) {

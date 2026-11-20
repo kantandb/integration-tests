@@ -2,7 +2,8 @@
 POST {{base_url}}/db
 Content-Type: application/json
 {
-  "name": "{{database}}-bulk-source"
+  "name": "{{database}}-bulk-source",
+  "indices": [{"name": "name", "path": "/name"}]
 }
 HTTP 201
 
@@ -35,19 +36,25 @@ QUERY {{base_url}}/db/{{database}}-bulk-source
 Content-Type: text/plain
 Accept: application/x-ndjson
 ```
-.
+select(.name >= "")
 ```
 HTTP 200
 [Captures]
 bulk_body: body replaceRegex /\n$/ ""
+source_id: body split "\n" nth 0 jsonpath "$.id"
+source_rev: body split "\n" nth 0 jsonpath "$.rev"
 [Asserts]
 header "Content-Type" == "application/x-ndjson"
 header "Cache-Control" == "no-store"
 header "Trailer" == "Query-Status"
 header "Query-Status" == "ok"
 body split "\n" count == 3
-body contains "\"doc\":{\"name\":\"first\",\"rank\":1}}\n"
-body contains "\"doc\":{\"name\":\"second\",\"rank\":2}}\n"
+body split "\n" nth 0 jsonpath "$.id" isString
+body split "\n" nth 0 jsonpath "$.rev" isString
+body split "\n" nth 0 jsonpath "$.doc.name" == "first"
+body split "\n" nth 0 jsonpath "$.doc.rank" == 1
+body split "\n" nth 1 jsonpath "$.doc.name" == "second"
+body split "\n" nth 1 jsonpath "$.doc.rank" == 2
 
 
 # Import the export and read the same values from the target.
@@ -70,15 +77,19 @@ QUERY {{base_url}}/db/{{database}}-bulk-target
 Content-Type: text/plain
 Accept: application/x-ndjson
 ```
-.
+select(.name >= "")
 ```
 HTTP 200
 [Asserts]
 header "Content-Type" == "application/x-ndjson"
 header "Query-Status" == "ok"
 body split "\n" count == 3
-body contains "\"doc\":{\"name\":\"first\",\"rank\":1}}\n"
-body contains "\"doc\":{\"name\":\"second\",\"rank\":2}}\n"
+body split "\n" nth 0 jsonpath "$.id" != "{{source_id}}"
+body split "\n" nth 0 jsonpath "$.rev" != "{{source_rev}}"
+body split "\n" nth 0 jsonpath "$.doc.name" == "first"
+body split "\n" nth 0 jsonpath "$.doc.rank" == 1
+body split "\n" nth 1 jsonpath "$.doc.name" == "second"
+body split "\n" nth 1 jsonpath "$.doc.rank" == 2
 
 
 # A malformed import does not add any documents.

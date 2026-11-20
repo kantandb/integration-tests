@@ -1,6 +1,7 @@
 import http from "k6/http";
 import { check, fail } from "k6";
 import { Counter } from "k6/metrics";
+import { query } from "../query.js";
 
 const baseUrl = __ENV.BASE_URL;
 const vus = Number(__ENV.ETAG_VUS || 10);
@@ -99,6 +100,12 @@ export default function ({ database, id, etag }) {
                 etagPattern.test(r.headers.Etag) && r.headers.Etag !== etag,
         });
 
+        // Save the accepted response for verification after all writers finish.
+        const receipt = http.post(`${baseUrl}/db/${database}`,
+            JSON.stringify({ proof: true, winner: __VU, rev: response.headers.Etag }),
+            { headers: jsonHeaders, tags: { name: "winner_receipt" } });
+        check(receipt, { "winner receipt saved": (r) => r.status === 201 });
+
         return;
     }
 
@@ -118,14 +125,13 @@ export function teardown({ database, id, etag }) {
         tags: { name: "document_read" },
     });
     const finalEtag = read.headers.Etag;
+    const receipt = query(baseUrl, database, "select(.proof == true)", { name: "winner_receipt" });
+    const proof = receipt.status === 200 && receipt.json().length === 1 ? receipt.json()[0].doc : null;
 
     check(read, {
         "winning document read": (r) => r.status === 200,
-        "winner is a competing VU": (r) => {
-            const winner = r.json("winner");
-
-            return Number.isInteger(winner) && winner >= 1 && winner <= vus;
-        },
+        "final state matches accepted write": (r) => proof !== null &&
+            r.json("winner") === proof.winner && finalEtag === proof.rev,
         "final ETag changed": () =>
             etagPattern.test(finalEtag) && finalEtag !== etag,
     });

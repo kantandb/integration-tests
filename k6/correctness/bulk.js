@@ -19,8 +19,6 @@ if (documents > 1000) {
 const imports = new Counter("bulk_imports");
 const exports = new Counter("bulk_exports");
 
-http.setResponseCallback(http.expectedStatuses({ min: 200, max: 204 }, 400));
-
 export const options = {
     scenarios: {
         bulk: {
@@ -33,8 +31,6 @@ export const options = {
     thresholds: {
         checks: ["rate==1"],
         http_req_failed: ["rate==0"],
-        "http_req_duration{operation:bulk_import}": ["p(95)<5000"],
-        "http_req_duration{operation:bulk_export,status:200}": ["p(95)<5000"],
         bulk_imports: ["count>0"],
         bulk_exports: ["count>0"],
     },
@@ -49,7 +45,7 @@ export function setup() {
     }
 
     const source = `bulk-source-${Date.now()}`;
-    createDatabase(source, true);
+    createDatabase(source);
 
     const body = makeBody();
     const imported = http.post(`${baseUrl}/db/${source}`, body, {
@@ -72,9 +68,7 @@ export function setup() {
 export default function ({ source }) {
     const suffix = `${Date.now()}-${__VU}-${__ITER}`;
     const target = `bulk-target-${suffix}`;
-    const invalid = `bulk-invalid-${suffix}`;
-    createDatabase(target, true);
-    createDatabase(invalid, false);
+    createDatabase(target);
 
     const exported = exportDocs(source, "bulk_export");
     const sourceDocs = parseNDJSON(exported);
@@ -105,43 +99,33 @@ export default function ({ source }) {
     checkCount(target, documents);
 
     const reexported = exportDocs(target, "bulk_reexport");
+    const targetDocs = parseNDJSON(reexported);
     check(reexported, {
         "target re-exported": (r) => r.status === 200,
         "round trip preserves values": (r) =>
-            r.status === 200 && sameDocs(parseNDJSON(r).map((row) => row.doc), sourceDocs.map((row) => row.doc)),
+            r.status === 200 && sameDocs(targetDocs.map((row) => row.doc), sourceDocs.map((row) => row.doc)),
         "round trip assigns new metadata": (r) => r.status === 200 &&
-            parseNDJSON(r).length === sourceDocs.length && parseNDJSON(r).every((row) =>
+            targetDocs.length === sourceDocs.length && targetDocs.every((row) =>
                 typeof row.id === "string" && /^"[0-9a-f]{32}"$/.test(row.rev) &&
                 sourceDocs.every((source) => source.id !== row.id && source.rev !== row.rev)),
     });
 
-    const rejected = http.post(`${baseUrl}/db/${invalid}`, "{}\n[]\n", {
-        headers: bulkHeaders,
-        tags: { operation: "bulk_invalid" },
+    // Read through the imported index, not just the primary records.
+    const indexed = query(baseUrl, target, "select(.group == 0)", { operation: "bulk_index" });
+    check(indexed, {
+        "import builds indexes": (r) => r.status === 200 &&
+            sameDocs(r.json().map((row) => row.doc), expectedDocs().filter((doc) => doc.group === 0)),
     });
-    check(rejected, {
-        "invalid import rejected": (r) => r.status === 400,
-        "invalid import reports line": (r) => {
-            const error = r.json("error");
-            return error.code === "invalid_document" && error.line === 2;
-        },
-        "invalid import reports failure": (r) => r.json("success") === false,
-    });
-    checkCount(invalid, 0);
 
     deleteDatabase(target);
-    deleteDatabase(invalid);
 }
 
 export function teardown({ source }) {
     deleteDatabase(source);
 }
 
-function createDatabase(name, indexed) {
-    const request = { name };
-    if (indexed) {
-        request.indices = [{ name: "group", path: "/group" }];
-    }
+function createDatabase(name) {
+    const request = { name, indices: [{ name: "group", path: "/group" }] };
 
     const response = http.post(`${baseUrl}/db`, JSON.stringify(request), {
         headers: jsonHeaders,
@@ -195,7 +179,7 @@ function payload(seed) {
 
 function sameDocs(actual, expected) {
     const normalize = (values) => values
-        .map((value) => JSON.stringify(value))
+        .map((value) => JSON.stringify(value, Object.keys(value).sort()))
         .sort();
     const left = normalize(actual);
     const right = normalize(expected);

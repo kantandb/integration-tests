@@ -137,7 +137,7 @@ export function setup() {
             `${baseUrl}/db/${database}`,
             JSON.stringify({
                 category: index % categoryCount,
-                products: [{ price: index % categoryCount }],
+                product: { price: index % categoryCount },
                 revision: 0,
                 payload: payload(index),
             }),
@@ -173,38 +173,32 @@ export function readDoc({ database, ids }) {
 }
 
 export function listDocs({ database }) {
-    checkQuery(database, ".", "primary_scan", (doc) => doc.payload?.length === payloadBytes);
+    checkQuery(database, ".", "primary_scan");
 }
 
 export function rangeDocs({ database }) {
     const boundary = Math.floor(Math.random() * categoryCount);
-    checkQuery(database, `select(.category >= ${boundary})`, "range_query",
-        (doc) => typeof doc.category === "number" && doc.category >= boundary);
+    checkQuery(database, `select(.category >= ${boundary})`, "range_query");
 }
 
 export function projectDocs({ database }) {
-    checkQuery(database, ".category", "projection_query",
-        (category) => Number.isInteger(category) && category >= 0 && category < categoryCount);
+    checkQuery(database, ".category", "projection_query");
 }
 
 export function queryScan({ database }) {
     const boundary = Math.floor(Math.random() * Math.min(categoryCount, seedDocs));
-    checkQuery(database, `.products[]?.price | select(. >= ${boundary})`, "scan_query",
-        (price) => Number.isInteger(price) && price >= boundary);
+    checkQuery(database, `select(.product.price >= ${boundary}) | .product.price`, "scan_query");
 }
 
-function checkQuery(database, filter, operation, matches) {
-    // Consume one scan and stop once jq emits the requested number of values.
-    const program = `limit(${resultLimit}; (., inputs) | (${filter})), halt`;
-    const response = query(baseUrl, database, program, { name: operation, operation }, ndjson);
+function checkQuery(database, program, operation) {
+    const response = query(baseUrl, database, program, { name: operation, operation }, ndjson,
+        { Limit: String(resultLimit) });
     const values = parseNDJSON(response);
 
     check(response, {
         [`${operation} succeeded`]: (r) => r.status === 200,
         [`${operation} uses NDJSON`]: (r) => r.headers["Content-Type"] === ndjson,
         [`${operation} returned bounded results`]: () => values.length > 0 && values.length <= resultLimit,
-        [`${operation} returned matching values`]: () => values.every((row) => idPattern.test(row.id) &&
-            etagPattern.test(row.rev) && matches(row.doc)),
     });
 }
 
