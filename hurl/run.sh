@@ -38,6 +38,6 @@ trap 'exit 130' INT TERM
 hurl --test --retry 30 --retry-interval 100ms \
     --variable "base_url=$base_url" hurl/health.hurl
 
-hurl --test --jobs 1 \
+hurl --test --jobs 1 --path-as-is \
     --variable "base_url=$base_url" \
     --variable "database=$database" hurl/*.hurl

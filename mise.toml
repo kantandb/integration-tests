@@ -32,8 +32,17 @@ run = "./k6/run.sh k6/correctness/bulk.js"
 [tasks.k6-bulk-benchmark]
 run = "./k6/run.sh k6/performance/bulk.js"
 
+[tasks.k6-api]
+run = "./k6/run.sh k6/correctness/api.js"
+
+[tasks.k6-pages]
+run = "./k6/run.sh k6/correctness/pages.js"
+
 [tasks.k6]
-depends = ["k6-etag", "k6-range", "k6-query", "k6-bulk"]
+depends = ["k6-etag", "k6-range", "k6-query", "k6-bulk", "k6-api", "k6-pages"]
+
+[tasks.reliability]
+run = "python3 reliability/api.py"
 
 [tasks.check]
 depends = ["hurlfmt-check", "hurl"]

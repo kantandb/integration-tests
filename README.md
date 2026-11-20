@@ -22,6 +22,8 @@ mise run k6-etag      # concurrent conditional writes
 mise run k6-range     # jq range filters
 mise run k6-query     # concurrent jq queries and writes
 mise run k6-bulk      # bulk transfer correctness
+mise run k6-api       # validation, conditional writes, patch atomicity
+mise run k6-pages     # pagination, cursor binding, query plans
 mise run k6-benchmark # storage benchmark
 mise run k6-bulk-benchmark # bulk transfer benchmark
 mise run k6           # all correctness tests
@@ -62,6 +64,10 @@ Indexed reads verify that imports build index entries.
 Configure it with `BULK_DOCS`, `BULK_PAYLOAD_BYTES`, `BULK_ITERATIONS`, and
 `BULK_MAX_DURATION`.
 
+The API and pagination tests use fixed fixtures and require every check to pass.
+They cover rejected writes, both patch formats, index maintenance, query plans,
+and complete page traversal on unchanged data.
+
 The benchmark starts with 10,000 indexed 1 KiB documents. It runs point reads,
 jq queries, indexed updates, and indexed creates for two minutes. The jq
 queries return full documents, filter ranges, select fields, or filter nested
@@ -94,5 +100,13 @@ KANTAN_K6_BULK_CONCURRENCY=4 BULK_BENCHMARK_VUS=4 \
 mise run k6-bulk-benchmark
 ```
 
-Set `K6_SUMMARY_EXPORT=summary.json` for machine-readable results. Keep all
+## Executable reliability tests
+
+Run `mise run reliability` with Python 3. The tests use only its standard library.
+Each test starts a server with a temporary encryption key and storage directory.
+They test restart durability, cursor continuation after restart, overlapping
+queries, cancellation, timeout recovery, and byte, count, and batch limits.
+Small server limits keep boundary tests fast. No persistent state remains.
+
+Set `K6_SUMMARY_EXPORT=summary.json` for machine-readable k6 results. Keep all
 settings fixed when comparing revisions and run each revision several times.

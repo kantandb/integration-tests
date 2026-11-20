@@ -7,6 +7,7 @@
 - Hurl integration tests live in `hurl/*.hurl`.
 - k6 tests live in `k6/correctness`, `k6/reliability`, and `k6/performance`.
 - Both runners build `server-go/kantan`, start it with a temporary key and storage, and remove all temporary state.
+- Executable reliability tests live in `reliability/api.py` and use the Python 3 standard library.
 - `hurl/run.sh` supplies `base_url` and a unique `database`; `k6/run.sh` supplies `BASE_URL`.
 
 ## Commands
@@ -22,6 +23,9 @@ mise run k6-etag           # Run concurrent conditional writes
 mise run k6-range          # Run jq range filters
 mise run k6-query          # Run concurrent QUERY and writes
 mise run k6-bulk           # Run bulk transfer correctness
+mise run k6-api            # Run API validation and mutation contracts
+mise run k6-pages          # Run pagination and query plan correctness
+mise run reliability       # Run restart, cancellation, and boundary tests
 mise run k6-benchmark      # Run mixed storage benchmark
 mise run k6-bulk-benchmark # Run bulk transfer benchmark
 mise run check             # Run Hurl formatting and integration tests
@@ -51,4 +55,4 @@ Each k6 task starts a separate server. Configuration variables and defaults are 
 
 ## Definition of done
 
-Run `mise run check`. Run the affected k6 task for k6 changes; run `mise run k6` when shared correctness behavior changes.
+Run `mise run check`. Run the affected k6 task for k6 changes; run `mise run k6` when shared correctness behavior changes. Run `mise run reliability` for executable reliability changes.
