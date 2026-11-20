@@ -47,19 +47,44 @@ jsonpath "$.indices[2].name" == "score"
 jsonpath "$.indices[2].path" == "/score"
 
 
+# Create another database to force a second page.
+POST {{base_url}}/db
+Content-Type: application/json
+{
+  "name": "{{database}}-next"
+}
+HTTP 201
+
+
 # Find the database through the paginated list.
-GET {{base_url}}/db?limit=1
+GET {{base_url}}/db
+Limit: 1
 HTTP 200
 [Captures]
-database_cursor: jsonpath "$.databases[0]"
+database_cursor: header "Cursor"
 [Asserts]
 jsonpath "$.databases" count == 1
 jsonpath "$.databases[0]" == "{{database}}"
+header "Cursor" == "{{database}}"
 
-GET {{base_url}}/db?limit=1&cursor={{database_cursor}}
+GET {{base_url}}/db
+Limit: 1
+Cursor: {{database_cursor}}
+HTTP 200
+[Asserts]
+jsonpath "$.databases" count == 1
+jsonpath "$.databases[0]" == "{{database}}-next"
+header "Cursor" not exists
+
+GET {{base_url}}/db
+Cursor: {{database}}-next
 HTTP 200
 [Asserts]
 jsonpath "$.databases" count == 0
+header "Cursor" not exists
+
+DELETE {{base_url}}/db/{{database}}-next
+HTTP 204
 
 
 # Create two documents.
@@ -94,6 +119,7 @@ Content-Type: application/json; charset=utf-8
 HTTP 201
 [Captures]
 second_id: jsonpath "$.id"
+second_etag: header "ETag"
 [Asserts]
 header "Location" == "/db/{{database}}/{{second_id}}"
 header "ETag" matches /^"[0-9a-f]{32}"$/
@@ -111,7 +137,7 @@ jsonpath "$.doc_count" == 2
 jsonpath "$.documents" not exists
 
 
-# Read document bodies in creation order without server metadata.
+# Read documents with their IDs and revisions.
 QUERY {{base_url}}/db/{{database}}
 Content-Type: text/plain
 ```
@@ -120,10 +146,14 @@ Content-Type: text/plain
 HTTP 200
 [Asserts]
 jsonpath "$" count == 2
-jsonpath "$[0].name" == "first"
-jsonpath "$[1].name" == "second"
-jsonpath "$[0].id" not exists
-jsonpath "$[0].rev" not exists
+jsonpath "$[0].doc.name" == "first"
+jsonpath "$[1].doc.name" == "second"
+jsonpath "$[0].id" == "{{first_id}}"
+jsonpath "$[0].rev" == "{{first_etag}}"
+jsonpath "$[1].id" == "{{second_id}}"
+jsonpath "$[1].rev" == "{{second_etag}}"
+jsonpath "$[0].doc.id" not exists
+jsonpath "$[0].doc.rev" not exists
 
 
 # Read and replace the first document.
@@ -166,7 +196,10 @@ select(.active == true) | .name
 ```
 HTTP 200
 [Asserts]
-body == "[\"second\"]"
+jsonpath "$" count == 1
+jsonpath "$[0].doc" == "second"
+jsonpath "$[0].id" == "{{second_id}}"
+jsonpath "$[0].rev" == "{{second_etag}}"
 
 
 # Reject a stale write without changing the document.
@@ -214,7 +247,9 @@ select(.active == false) | .name
 ```
 HTTP 200
 [Asserts]
-body == "[\"merged\"]"
+jsonpath "$" count == 1
+jsonpath "$[0].doc" == "merged"
+jsonpath "$[0].rev" == "{{merged_etag}}"
 
 PATCH {{base_url}}/db/{{database}}/{{first_id}}
 Content-Type: application/json-patch+json

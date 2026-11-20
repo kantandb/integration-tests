@@ -7,8 +7,10 @@ mise run hurl
 ```
 
 The suite covers health, errors, CRUD, database list pagination, conditional
-writes, and jq queries. It also checks stream completion through the
-`Query-Status` HTTP trailer, a field that arrives after the response body.
+writes, and jq queries. Queries return `{id, rev, doc}` wrappers.
+Pagination uses `Limit` and `Cursor` headers. The suite also checks query
+cursors and stream completion through HTTP trailers, fields that arrive after
+the response body.
 
 ## k6 tests
 
@@ -46,8 +48,8 @@ Exactly one conditional write must succeed. Every other write must return
 `412 precondition_failed`.
 
 The range test seeds scores in reverse creation order, including ties.
-It tests jq range filters and checks results in document ID order. Configure it
-with `RANGE_VUS`, `RANGE_ITERATIONS`, `RANGE_SEED_DOCS`, and `RANGE_MAX_DURATION`.
+It tests indexed jq range filters and checks results in score order, then ID order.
+Configure it with `RANGE_VUS`, `RANGE_ITERATIONS`, `RANGE_SEED_DOCS`, and `RANGE_MAX_DURATION`.
 
 The QUERY test runs numeric and nested jq filters while other clients write to
 the same database. It tests all five comparisons in JSON and NDJSON, which
@@ -55,7 +57,8 @@ stores one JSON value per line. Configure it with `QUERY_VUS`, `QUERY_ITERATIONS
 `QUERY_SEED_DOCS`, and `QUERY_MAX_DURATION`.
 
 The bulk correctness test checks that an NDJSON export and import preserves
-values and counts. It also checks that a rejected batch adds no documents.
+values and counts while assigning new IDs and revisions.
+It also checks that a rejected batch adds no documents.
 Configure it with `BULK_DOCS`, `BULK_PAYLOAD_BYTES`, `BULK_ITERATIONS`, and
 `BULK_MAX_DURATION`.
 

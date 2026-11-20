@@ -102,8 +102,9 @@ export default function ({ database }) {
         "query succeeded": (r) => r.status === 200,
         "query found the replacement body": (r) => {
             const docs = r.status === 200 ? r.json() : null;
-            return docs?.length === 1 && docs[0]?.owner === __VU &&
-                docs[0]?.iteration === __ITER && docs[0]?.active === false;
+            return docs?.length === 1 && docs[0]?.id === id && docs[0]?.rev === updatedEtag &&
+                docs[0]?.doc.owner === __VU && docs[0]?.doc.iteration === __ITER &&
+                docs[0]?.doc.active === false;
         },
     });
 

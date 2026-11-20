@@ -203,7 +203,8 @@ function checkQuery(database, filter, operation, matches) {
         [`${operation} succeeded`]: (r) => r.status === 200,
         [`${operation} uses NDJSON`]: (r) => r.headers["Content-Type"] === ndjson,
         [`${operation} returned bounded results`]: () => values.length > 0 && values.length <= resultLimit,
-        [`${operation} returned matching values`]: () => values.every(matches),
+        [`${operation} returned matching values`]: () => values.every((row) => idPattern.test(row.id) &&
+            etagPattern.test(row.rev) && matches(row.doc)),
     });
 }
 

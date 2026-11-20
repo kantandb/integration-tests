@@ -101,7 +101,7 @@ export function setup() {
             fail(`document seed failed: ${response.status} ${response.body}`);
         }
 
-        entries.push({ id, score, prices, seed: index });
+        entries.push({ id, rev: response.headers.Etag, score, prices, seed: index });
     }
 
     return {
@@ -192,11 +192,13 @@ export function mixedWrites({ database }) {
 }
 
 function checkResult(response, actual, expected, kind, operator) {
-    const seeds = expected.sort((left, right) => compare(left.id, right.id)).map((entry) => entry.seed);
+    const ordered = expected.sort((left, right) => compare(left.id, right.id));
+    const seeds = ordered.map((entry) => entry.seed);
 
     if (check(response, {
         [`${kind} QUERY succeeded`]: (r) => r.status === 200,
-        [`${kind} QUERY returned ordered results`]: () => Array.isArray(actual) && same(actual, seeds),
+        [`${kind} QUERY returned ordered results`]: () => Array.isArray(actual) && same(actual.map((row) => row.doc), seeds) &&
+            actual.every((row, index) => row.id === ordered[index].id && row.rev === ordered[index].rev),
     })) {
         completed[`${kind}_${operator}`].add(1);
     }

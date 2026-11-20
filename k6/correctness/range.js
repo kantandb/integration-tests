@@ -80,7 +80,7 @@ export function setup() {
             fail(`document seed failed: ${response.status} ${response.body}`);
         }
 
-        entries.push({ id, score, seed: index });
+        entries.push({ id, rev: response.headers.Etag, score, seed: index });
     }
 
     entries.sort((left, right) => compare(left.id, right.id));
@@ -92,17 +92,19 @@ export default function ({ database, entries, maxScore }) {
     const iteration = exec.scenario.iterationInTest;
     const operator = cases[iteration % cases.length];
     const boundary = 1 + (iteration % maxScore);
-    const expected = entries.filter((entry) => matches(entry.score, operator, boundary));
+    const expected = entries.filter((entry) => matches(entry.score, operator, boundary))
+        .sort((left, right) => left.score - right.score || compare(left.id, right.id));
     const program = `select(.score ${operators[operator]} ${boundary})`;
     const response = query(baseUrl, database, program, { operation: "range_query", operator });
     const actual = response.status === 200 ? response.json() : null;
 
     if (!check(response, {
         "range query succeeded": (r) => r.status === 200,
-        "range query returns bodies in document order": () =>
+        "range query returns wrapped documents in index order": () =>
             Array.isArray(actual) && actual.length === expected.length &&
-            actual.every((doc, index) => doc?.score === expected[index].score &&
-                doc.seed === expected[index].seed && !("id" in doc) && !("rev" in doc)),
+            actual.every((row, index) => row?.id === expected[index].id &&
+                row.rev === expected[index].rev && row.doc?.score === expected[index].score &&
+                row.doc.seed === expected[index].seed),
     })) {
         return;
     }

@@ -1,7 +1,7 @@
 import http from "k6/http";
 import { check, fail } from "k6";
 import { Counter, Trend } from "k6/metrics";
-import { ndjson, query } from "../query.js";
+import { ndjson, parseNDJSON, query } from "../query.js";
 
 const baseUrl = __ENV.BASE_URL;
 const vus = Number(__ENV.BULK_BENCHMARK_VUS || 1);
@@ -96,13 +96,14 @@ export default function () {
         name: "bulk_export", operation: "bulk_export",
     }, ndjson);
     const exportBytes = exported.status === 200 ? exported.body.length : 0;
-    const exportDocs = exported.status === 200
-        ? exported.body.trim().split("\n").filter(Boolean).length
-        : 0;
+    const rows = parseNDJSON(exported);
+    const exportDocs = rows.length;
+    const valueBytes = rows.reduce((sum, row) => sum + JSON.stringify(row.doc).length + 1, 0);
     if (check(exported, {
         "bulk batch exported": (r) => r.status === 200,
         "bulk export uses NDJSON": (r) => r.headers["Content-Type"] === ndjson,
-        "bulk export byte count matches": () => exportBytes === bodyBytes,
+        "bulk export byte count includes metadata": () => exportBytes > bodyBytes,
+        "bulk export value byte count matches": () => valueBytes === bodyBytes,
         "bulk export document count matches": () => exportDocs === documents,
     })) {
         exportedBytes.add(exportBytes);

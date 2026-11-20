@@ -43,6 +43,64 @@ Content-Type: application/json
 HTTP 201
 
 
+# Reject invalid database pagination headers and URI parameters.
+GET {{base_url}}/db
+Limit: 0
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_limit"
+jsonpath "$.error.message" == "Limit must be between 1 and 1000"
+
+GET {{base_url}}/db
+Limit: 1001
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_limit"
+
+GET {{base_url}}/db
+Cursor: Bad
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_cursor"
+
+GET {{base_url}}/db?limit=1
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_query"
+
+
+# Reject invalid query pagination and multi-output programs.
+QUERY {{base_url}}/db/{{database}}
+Content-Type: text/plain
+Limit: none
+```
+.
+```
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_limit"
+
+QUERY {{base_url}}/db/{{database}}
+Content-Type: text/plain
+Cursor: invalid
+```
+.
+```
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "invalid_cursor"
+
+QUERY {{base_url}}/db/{{database}}
+Content-Type: text/plain
+Limit: 1
+```
+., .
+```
+HTTP 400
+[Asserts]
+jsonpath "$.error.code" == "query_not_pageable"
+
+
 # Reject URI parameters on database reads and queries.
 GET {{base_url}}/db/{{database}}?limit=1
 HTTP 400

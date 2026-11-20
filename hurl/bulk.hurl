@@ -20,7 +20,7 @@ Content-Type: application/json
 HTTP 201
 
 
-# Export source values without IDs or revisions.
+# Export wrapped documents for import.
 POST {{base_url}}/db/{{database}}-bulk-source
 Content-Type: application/x-ndjson
 ```
@@ -45,8 +45,9 @@ header "Content-Type" == "application/x-ndjson"
 header "Cache-Control" == "no-store"
 header "Trailer" == "Query-Status"
 header "Query-Status" == "ok"
-body contains "{\"name\":\"first\",\"rank\":1}\n"
-body contains "{\"name\":\"second\",\"rank\":2}\n"
+body split "\n" count == 3
+body contains "\"doc\":{\"name\":\"first\",\"rank\":1}}\n"
+body contains "\"doc\":{\"name\":\"second\",\"rank\":2}}\n"
 
 
 # Import the export and read the same values from the target.
@@ -75,8 +76,9 @@ HTTP 200
 [Asserts]
 header "Content-Type" == "application/x-ndjson"
 header "Query-Status" == "ok"
-body contains "{\"name\":\"first\",\"rank\":1}\n"
-body contains "{\"name\":\"second\",\"rank\":2}\n"
+body split "\n" count == 3
+body contains "\"doc\":{\"name\":\"first\",\"rank\":1}}\n"
+body contains "\"doc\":{\"name\":\"second\",\"rank\":2}}\n"
 
 
 # A malformed import does not add any documents.

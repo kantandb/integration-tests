@@ -84,7 +84,7 @@ export default function ({ source }) {
         "export is NDJSON": (r) => header(r, "Content-Type") === "application/x-ndjson",
         "export disables caching": (r) => header(r, "Cache-Control") === "no-store",
         "export contains every document": () => sourceDocs.length === documents,
-        "export preserves values": () => sameDocs(sourceDocs, expectedDocs()),
+        "export preserves values": () => sameDocs(sourceDocs.map((row) => row.doc), expectedDocs()),
     })) {
         exports.add(1);
     }
@@ -108,7 +108,11 @@ export default function ({ source }) {
     check(reexported, {
         "target re-exported": (r) => r.status === 200,
         "round trip preserves values": (r) =>
-            r.status === 200 && sameDocs(parseNDJSON(r), sourceDocs),
+            r.status === 200 && sameDocs(parseNDJSON(r).map((row) => row.doc), sourceDocs.map((row) => row.doc)),
+        "round trip assigns new metadata": (r) => r.status === 200 &&
+            parseNDJSON(r).length === sourceDocs.length && parseNDJSON(r).every((row) =>
+                typeof row.id === "string" && /^"[0-9a-f]{32}"$/.test(row.rev) &&
+                sourceDocs.every((source) => source.id !== row.id && source.rev !== row.rev)),
     });
 
     const rejected = http.post(`${baseUrl}/db/${invalid}`, "{}\n[]\n", {
